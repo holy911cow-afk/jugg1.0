@@ -161,6 +161,10 @@ h1,h2,h3,p,label,.stMarkdown { color:var(--text); }
 .small-muted { color:var(--muted); font-size:.92rem; }
 .news-heading { margin-top:1.2rem; }
 .back-wrap div.stButton > button { background:rgba(255,255,255,.05); border-color:rgba(255,255,255,.14); box-shadow:none; }
+
+[data-baseweb="popover"] *, [role="listbox"] *, [data-baseweb="menu"] * { color:#f5f7ff!important; }
+[data-testid="stWidgetLabel"] p, .stRadio label, .stCheckbox label, .stToggle label { color:#eef1ff!important; }
+.stAlert, .stAlert p, [data-testid="stNotificationContentInfo"] p { color:#eef1ff!important; }
 </style>
 """
 st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
@@ -422,10 +426,13 @@ def render_hub():
     hub_html = """
     <div class="hub-shell">
       <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
-      <div class="brand"><div class="brand-mark">J</div><div><b>JUGG</b><span>Personal application hub</span></div></div>
+      <div class="brand-row">
+        <div class="brand"><div class="brand-mark">J</div><div><b>JUGG</b></div></div>
+        <div class="utility"><span>◌</span><span>⚙</span></div>
+      </div>
       <div class="hero"><h1>Welcome back</h1><p>What would you like to explore today?</p><div class="hero-line"></div></div>
       <div class="grid">
-        <div class="app-card active-card">
+        <a class="app-card active-card" href="?page=news" target="_self" aria-label="Open News Finder">
           <div class="shine"></div>
           <div class="icon-wrap">
             <svg viewBox="0 0 64 64" aria-hidden="true">
@@ -435,70 +442,38 @@ def render_hub():
             </svg>
           </div>
           <div class="card-title">News Finder</div>
-          <div class="card-copy">Find and analyze the latest company and sector news.</div>
-          <div class="open-hint">Open program <span>→</span></div>
-        </div>
-        <div class="app-card placeholder"><div class="plus">+</div><div class="card-title">Future program</div><div class="card-copy">Reserved for the next module.</div></div>
-        <div class="app-card placeholder"><div class="plus">+</div><div class="card-title">Future program</div><div class="card-copy">Reserved for the next module.</div></div>
-        <div class="app-card placeholder"><div class="plus">+</div><div class="card-title">Future program</div><div class="card-copy">Reserved for the next module.</div></div>
-        <div class="app-card placeholder"><div class="plus">+</div><div class="card-title">Future program</div><div class="card-copy">Reserved for the next module.</div></div>
-        <div class="app-card placeholder"><div class="plus">+</div><div class="card-title">Future program</div><div class="card-copy">Reserved for the next module.</div></div>
-        <div class="app-card placeholder"><div class="plus">+</div><div class="card-title">Future program</div><div class="card-copy">Reserved for the next module.</div></div>
-        <div class="app-card placeholder"><div class="plus">+</div><div class="card-title">Future program</div><div class="card-copy">Reserved for the next module.</div></div>
+          <div class="card-copy">Find and analyze<br>latest news</div>
+        </a>
+        <div class="app-card placeholder"><div class="empty-icon">＋</div><div class="card-title">Coming later</div><div class="card-copy">Future program</div></div>
+        <div class="app-card placeholder"><div class="empty-icon">＋</div><div class="card-title">Coming later</div><div class="card-copy">Future program</div></div>
+        <div class="app-card placeholder"><div class="empty-icon">＋</div><div class="card-title">Coming later</div><div class="card-copy">Future program</div></div>
+        <div class="app-card placeholder"><div class="empty-icon">＋</div><div class="card-title">Coming later</div><div class="card-copy">Future program</div></div>
+        <div class="app-card placeholder"><div class="empty-icon">＋</div><div class="card-title">Coming later</div><div class="card-copy">Future program</div></div>
+        <div class="app-card placeholder"><div class="empty-icon">＋</div><div class="card-title">Coming later</div><div class="card-copy">Future program</div></div>
+        <div class="app-card placeholder"><div class="empty-icon">＋</div><div class="card-title">Coming later</div><div class="card-copy">Future program</div></div>
       </div>
-      <div class="wave wave-one"></div><div class="wave wave-two"></div>
+      <div class="wave-field">
+        <div class="wave wave-one"></div><div class="wave wave-two"></div><div class="wave wave-three"></div>
+      </div>
     </div>
     <style>
-    .hub-shell{position:relative;overflow:hidden;min-height:790px;padding:22px 34px 120px;border:1px solid rgba(132,153,255,.18);
-    border-radius:25px;background:linear-gradient(155deg,rgba(12,17,38,.94),rgba(5,9,23,.98));box-shadow:0 30px 90px rgba(0,0,0,.38)}
-    .brand{display:flex;align-items:center;gap:11px;position:relative;z-index:3}.brand-mark{width:35px;height:35px;border-radius:12px;
-    display:grid;place-items:center;background:linear-gradient(145deg,#8c5cff,#334ee9);box-shadow:0 0 28px rgba(126,77,255,.42);font-weight:800}
-    .brand b{display:block;font-size:15px}.brand span{display:block;color:#8994ba;font-size:10px;letter-spacing:.12em;text-transform:uppercase;margin-top:2px}
-    .hero{text-align:center;margin:54px 0 39px;position:relative;z-index:3}.hero h1{margin:0;font-size:42px;letter-spacing:-.035em}
-    .hero p{margin:9px 0;color:#a5afcf}.hero-line{width:38px;height:3px;border-radius:99px;margin:18px auto 0;background:linear-gradient(90deg,#3186ff,#bb4df3)}
-    .grid{position:relative;z-index:3;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px;max-width:1060px;margin:auto}
-    .app-card{position:relative;min-height:210px;padding:25px;border:1px solid rgba(132,153,255,.18);border-radius:17px;
-    background:linear-gradient(145deg,rgba(20,29,61,.88),rgba(11,16,37,.92));overflow:hidden;transition:transform .32s cubic-bezier(.2,.8,.2,1),border-color .32s,box-shadow .32s}
-    .app-card:hover{transform:translateY(-7px) scale(1.015);border-color:rgba(143,92,255,.6);box-shadow:0 18px 50px rgba(38,25,120,.32)}
-    .active-card{animation:cardIn .75s cubic-bezier(.16,1,.3,1) both}.placeholder{opacity:.48;animation:cardIn .75s cubic-bezier(.16,1,.3,1) both}
-    .placeholder:nth-child(2){animation-delay:.06s}.placeholder:nth-child(3){animation-delay:.12s}.placeholder:nth-child(4){animation-delay:.18s}
-    .placeholder:nth-child(5){animation-delay:.24s}.placeholder:nth-child(6){animation-delay:.30s}.placeholder:nth-child(7){animation-delay:.36s}.placeholder:nth-child(8){animation-delay:.42s}
-    .shine{position:absolute;inset:-120% -50%;background:linear-gradient(110deg,transparent 40%,rgba(255,255,255,.12) 50%,transparent 60%);transform:rotate(8deg);animation:shine 5s ease-in-out infinite}
-    .icon-wrap{width:58px;height:58px;border-radius:15px;display:grid;place-items:center;background:linear-gradient(145deg,rgba(108,69,239,.38),rgba(35,67,175,.34));
-    border:1px solid rgba(154,119,255,.38);box-shadow:0 0 30px rgba(126,77,255,.30)}
-    .icon-wrap svg{width:36px;fill:none;stroke:#a98cff;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 5px #7955ff)}
-    .card-title{font-size:18px;font-weight:700;margin-top:18px}.card-copy{font-size:13px;line-height:1.5;color:#9ca7ca;margin-top:7px}
-    .open-hint{position:absolute;left:25px;right:25px;bottom:20px;color:#c9baff;font-size:12px}.open-hint span{float:right;font-size:18px;transition:.25s}.active-card:hover .open-hint span{transform:translateX(5px)}
-    .plus{width:58px;height:58px;border:1px dashed rgba(155,166,210,.35);border-radius:15px;display:grid;place-items:center;font-size:28px;color:#7e89ae}
-    .ambient{position:absolute;width:420px;height:420px;border-radius:50%;filter:blur(85px);opacity:.20;animation:float 9s ease-in-out infinite alternate}
-    .ambient-a{left:-170px;bottom:-170px;background:#8a3cff}.ambient-b{right:-180px;bottom:-160px;background:#147dff;animation-delay:-3s}
-    .wave{position:absolute;left:-8%;right:-8%;height:120px;bottom:-35px;border-radius:50%;border-top:2px solid rgba(112,74,255,.65);
-    filter:drop-shadow(0 0 16px rgba(101,67,255,.7));transform:rotate(-2deg);animation:wave 6s ease-in-out infinite}
-    .wave-two{bottom:-5px;border-color:rgba(31,118,255,.5);animation-delay:-2.4s;opacity:.7}
-    @keyframes cardIn{from{opacity:0;transform:translateY(24px) scale(.97)}to{opacity:1;transform:none}}
-    @keyframes shine{0%,58%{transform:translateX(-80%) rotate(8deg)}78%,100%{transform:translateX(80%) rotate(8deg)}}
-    @keyframes float{to{transform:translate(35px,-30px) scale(1.08)}} @keyframes wave{50%{transform:translateY(-12px) rotate(2deg) scaleX(1.04)}}
-    @media(max-width:980px){.grid{grid-template-columns:repeat(2,1fr)}} @media(max-width:600px){.hub-shell{padding:20px 16px 100px}.grid{grid-template-columns:1fr}.hero h1{font-size:33px}}
+    .hub-shell{position:relative;overflow:hidden;min-height:750px;padding:25px 34px 125px;border:1px solid rgba(132,153,255,.22);border-radius:25px;background:linear-gradient(145deg,rgba(11,16,37,.98),rgba(4,8,21,.99));box-shadow:0 30px 90px rgba(0,0,0,.42)}
+    .brand-row{display:flex;align-items:center;justify-content:space-between;position:relative;z-index:4}.brand{display:flex;align-items:center;gap:10px}.brand-mark{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;background:linear-gradient(145deg,#9b5cff,#354feb);box-shadow:0 0 24px rgba(126,77,255,.48);font-weight:800;color:#fff}.brand b{font-size:16px;color:#f8f9ff}.utility{display:flex;gap:10px}.utility span{width:31px;height:31px;border:1px solid rgba(147,161,213,.18);border-radius:50%;display:grid;place-items:center;color:#f6f7ff;background:rgba(255,255,255,.03)}
+    .hero{text-align:center;margin:58px 0 40px;position:relative;z-index:3}.hero h1{margin:0;color:#fff;font-size:42px;line-height:1.08;letter-spacing:-.035em;font-weight:700}.hero p{margin:10px 0 0;color:#aeb7d3;font-size:15px}.hero-line{width:38px;height:3px;border-radius:99px;margin:20px auto 0;background:linear-gradient(90deg,#3186ff,#c549f3);box-shadow:0 0 18px rgba(133,82,255,.7)}
+    .grid{position:relative;z-index:3;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:17px;max-width:930px;margin:auto}.app-card{position:relative;min-height:154px;padding:23px 17px;border:1px solid rgba(132,153,255,.19);border-radius:15px;background:linear-gradient(145deg,rgba(20,29,61,.90),rgba(11,16,37,.94));overflow:hidden;text-decoration:none!important;text-align:center;transition:transform .32s cubic-bezier(.2,.8,.2,1),border-color .32s,box-shadow .32s,background .32s;animation:cardIn .72s cubic-bezier(.16,1,.3,1) both}
+    .app-card:hover{transform:translateY(-7px) scale(1.02);border-color:rgba(143,92,255,.62);box-shadow:0 18px 48px rgba(51,35,150,.34);background:linear-gradient(145deg,rgba(28,39,82,.96),rgba(12,18,42,.97))}.active-card{cursor:pointer}.placeholder{opacity:.30;cursor:default}.placeholder:hover{transform:none;box-shadow:none;border-color:rgba(132,153,255,.19);background:linear-gradient(145deg,rgba(20,29,61,.90),rgba(11,16,37,.94))}
+    .placeholder:nth-child(2){animation-delay:.06s}.placeholder:nth-child(3){animation-delay:.12s}.placeholder:nth-child(4){animation-delay:.18s}.placeholder:nth-child(5){animation-delay:.24s}.placeholder:nth-child(6){animation-delay:.30s}.placeholder:nth-child(7){animation-delay:.36s}.placeholder:nth-child(8){animation-delay:.42s}
+    .shine{position:absolute;inset:-135% -65%;background:linear-gradient(110deg,transparent 41%,rgba(255,255,255,.14) 50%,transparent 59%);transform:rotate(8deg);animation:shine 5.2s ease-in-out infinite}.icon-wrap,.empty-icon{width:53px;height:53px;margin:0 auto;border-radius:14px;display:grid;place-items:center;background:linear-gradient(145deg,rgba(108,69,239,.38),rgba(35,67,175,.34));border:1px solid rgba(154,119,255,.40);box-shadow:0 0 30px rgba(126,77,255,.31)}.icon-wrap svg{width:34px;fill:none;stroke:#a98cff;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 6px #7955ff)}.empty-icon{font-size:22px;color:#7f8bae;box-shadow:none;background:rgba(255,255,255,.025);border-style:dashed}
+    .card-title{font-size:15px;font-weight:700;margin-top:15px;color:#f8f9ff!important}.card-copy{font-size:12px;line-height:1.45;color:#a5afcb!important;margin-top:6px}.ambient{position:absolute;width:440px;height:440px;border-radius:50%;filter:blur(90px);opacity:.19;animation:float 9s ease-in-out infinite alternate}.ambient-a{left:-180px;bottom:-180px;background:#8a3cff}.ambient-b{right:-190px;bottom:-170px;background:#147dff;animation-delay:-3s}
+    .wave-field{position:absolute;left:0;right:0;bottom:0;height:160px;overflow:hidden;opacity:.95}.wave{position:absolute;left:-8%;right:-8%;height:120px;bottom:-54px;border-radius:50%;border-top:2px solid rgba(115,72,255,.70);filter:drop-shadow(0 0 14px rgba(101,67,255,.70));transform:rotate(-2deg);animation:wave 6s ease-in-out infinite}.wave-two{bottom:-26px;border-color:rgba(31,118,255,.55);animation-delay:-2.2s;opacity:.76}.wave-three{bottom:-42px;border-color:rgba(198,59,245,.48);animation-delay:-4.1s;opacity:.64}
+    @keyframes cardIn{from{opacity:0;transform:translateY(22px) scale(.97)}to{transform:none}}@keyframes shine{0%,58%{transform:translateX(-88%) rotate(8deg)}78%,100%{transform:translateX(88%) rotate(8deg)}}@keyframes float{to{transform:translate(38px,-28px) scale(1.08)}}@keyframes wave{50%{transform:translateY(-13px) rotate(2deg) scaleX(1.04)}}
+    @media(max-width:980px){.grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:600px){.hub-shell{padding:20px 15px 110px}.grid{grid-template-columns:1fr}.hero{margin-top:45px}.hero h1{font-size:34px}}
     </style>
     """
-    components_html(hub_html, height=835, scrolling=False)
-    st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
-    cols = st.columns([1.25, 1, 1, 1])
-    with cols[0]:
-        if st.button("Open News Finder", type="primary", use_container_width=True):
-            st.session_state.page = "news"
-            st.rerun()
-    for col in cols[1:]:
-        with col:
-            st.button("Coming later", disabled=True, use_container_width=True)
-
+    st.markdown(hub_html, unsafe_allow_html=True)
 
 def render_news_finder():
-    st.markdown('<div class="back-wrap">', unsafe_allow_html=True)
-    if st.button("← Back to programs"):
-        st.session_state.page = "hub"
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('<a class="back-link" href="?page=hub" target="_self">← Back to programs</a><style>.back-link{display:inline-flex;padding:10px 14px;border:1px solid rgba(255,255,255,.14);border-radius:12px;color:#eef1ff!important;text-decoration:none!important;background:rgba(255,255,255,.05);transition:.2s}.back-link:hover{transform:translateY(-1px);border-color:rgba(143,92,255,.5);background:rgba(143,92,255,.10)}</style>', unsafe_allow_html=True)
     st.markdown("""
     <div style="padding:10px 0 20px">
       <div style="font-size:12px;letter-spacing:.13em;text-transform:uppercase;color:#8d9ac3">JUGG · Program 01</div>
@@ -584,10 +559,11 @@ def render_news_finder():
             render_news_table(result["articles"], settings["source_map"])
 
 
-if "page" not in st.session_state:
-    st.session_state.page = "hub"
+page = st.query_params.get("page", "hub")
+if isinstance(page, list):
+    page = page[0] if page else "hub"
 
-if st.session_state.page == "news":
+if page == "news":
     render_news_finder()
 else:
     render_hub()
