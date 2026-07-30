@@ -8,6 +8,7 @@ from urllib.parse import quote_plus, urlparse
 import feedparser
 import requests
 import streamlit as st
+import plotly.graph_objects as go
 from streamlit.components.v1 import html as components_html
 
 
@@ -444,7 +445,7 @@ def render_hub():
           <div class="card-title">News Finder</div>
           <div class="card-copy">Find and analyze<br>latest news</div>
         </a>
-        <div class="app-card placeholder"><div class="empty-icon">＋</div><div class="card-title">Coming later</div><div class="card-copy">Future program</div></div>
+        <a class="app-card active-card" href="?page=portfolio" target="_self" aria-label="Open Portfolio"><div class="shine"></div><div class="icon-wrap"><svg viewBox="0 0 64 64"><path d="M12 50V28M25 50V18M38 50V34M51 50V11"></path><path d="M8 50h48"></path></svg></div><div class="card-title">Portfolio</div><div class="card-copy">Track allocation and<br>current market values</div></a>
         <div class="app-card placeholder"><div class="empty-icon">＋</div><div class="card-title">Coming later</div><div class="card-copy">Future program</div></div>
         <div class="app-card placeholder"><div class="empty-icon">＋</div><div class="card-title">Coming later</div><div class="card-copy">Future program</div></div>
         <div class="app-card placeholder"><div class="empty-icon">＋</div><div class="card-title">Coming later</div><div class="card-copy">Future program</div></div>
@@ -559,11 +560,162 @@ def render_news_finder():
             render_news_table(result["articles"], settings["source_map"])
 
 
+
+# ============================================================
+# Dark & Sleek Portfolio
+# ============================================================
+PORTFOLIO_HOLDINGS = [
+    {"name": "Siemens Healthineers", "ticker": "SHL.DE", "abbr": "SHL", "saved_value_eur": 852.00, "country": "Germany", "country_iso3": "DEU", "area": "Healthcare"},
+    {"name": "Verbund", "ticker": "VER.VI", "abbr": "VER", "saved_value_eur": 838.50, "country": "Austria", "country_iso3": "AUT", "area": "Renewable Energy"},
+    {"name": "Tomra Systems", "ticker": "TOM.OL", "abbr": "TOM", "saved_value_eur": 1011.60, "country": "Norway", "country_iso3": "NOR", "area": "Industrials / Recycling"},
+    {"name": "ANTA Sports", "ticker": "2020.HK", "abbr": "ANTA", "saved_value_eur": 944.13, "country": "China / Hong Kong", "country_iso3": "CHN", "area": "Consumer / Sportswear"},
+    {"name": "MS Europe 26/27 ABJ", "ticker": None, "abbr": "MS EU 26/27", "saved_value_eur": 1017.40, "country": "Europe exposure", "country_iso3": None, "area": "Structured Product"},
+]
+
+@st.cache_data(ttl=15 * 60, show_spinner=False)
+def fetch_yahoo_quote(ticker: str) -> dict:
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{quote_plus(ticker)}?range=5d&interval=1d"
+    try:
+        response = requests.get(url, headers={"User-Agent": "Mozilla/5.0 JUGG/1.0"}, timeout=12)
+        response.raise_for_status()
+        result = response.json()["chart"]["result"][0]
+        meta = result.get("meta", {})
+        closes = [x for x in result.get("indicators", {}).get("quote", [{}])[0].get("close", []) if x is not None]
+        price = float(meta.get("regularMarketPrice") or (closes[-1] if closes else 0))
+        previous = float(meta.get("chartPreviousClose") or meta.get("previousClose") or (closes[-2] if len(closes) > 1 else price))
+        change_pct = ((price / previous) - 1) * 100 if previous else 0.0
+        return {"ok": bool(price), "price": price, "previous": previous, "change_pct": change_pct}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc), "price": None, "previous": None, "change_pct": 0.0}
+
+
+def live_portfolio_rows() -> tuple[list[dict], str]:
+    rows, live_loaded = [], False
+    for item in PORTFOLIO_HOLDINGS:
+        row = dict(item)
+        if item["ticker"]:
+            quote = fetch_yahoo_quote(item["ticker"])
+            if quote.get("ok"):
+                row["daily_pct"] = quote["change_pct"]
+                row["current_value_eur"] = item["saved_value_eur"] * (1 + quote["change_pct"] / 100)
+                row["source_status"] = "Latest quote loaded"
+                live_loaded = True
+            else:
+                row.update({"daily_pct": 0.0, "current_value_eur": item["saved_value_eur"], "source_status": "Saved value"})
+        else:
+            row.update({"daily_pct": 0.0, "current_value_eur": item["saved_value_eur"], "source_status": "Last recorded valuation"})
+        rows.append(row)
+    return rows, ("Market quotes loaded on opening" if live_loaded else "Using saved portfolio values")
+
+
+def portfolio_nav() -> str:
+    return "".join([
+        '<a class="pnav" href="?page=hub" target="_self"><span>⌂</span>Menu</a>',
+        '<a class="pnav" href="?page=hub" target="_self"><span>▦</span>Programs</a>',
+        '<a class="pnav nav-active" href="?page=portfolio" target="_self"><span>◉</span>Portfolio</a>',
+        '<a class="pnav" href="?page=news" target="_self"><span>▥</span>News Finder</a>',
+        '<a class="pnav" href="?page=portfolio" target="_self"><span>⚙</span>Settings</a>',
+    ])
+
+
+def render_portfolio():
+    rows, price_status = live_portfolio_rows()
+    total = sum(r["current_value_eur"] for r in rows)
+    saved_total = sum(r["saved_value_eur"] for r in rows)
+    day_change = total - saved_total
+    day_pct = (day_change / saved_total * 100) if saved_total else 0
+
+    st.markdown("""
+    <style>
+    .main .block-container{max-width:1500px;padding:0!important}
+    .portfolio-shell{min-height:100vh;background:linear-gradient(145deg,#050817,#071022 55%,#050817);color:#f7f8ff;display:grid;grid-template-columns:190px 1fr;border:1px solid rgba(127,111,255,.16)}
+    .portfolio-side{padding:28px 18px;border-right:1px solid rgba(133,151,255,.16);background:rgba(4,8,20,.74)}
+    .portfolio-brand{font-size:22px;font-weight:750;margin:4px 8px 32px;color:#fff}.portfolio-brand b{color:#8f63ff;margin-right:8px}
+    .pnav{display:flex;gap:12px;align-items:center;padding:13px 14px;margin:7px 0;border-radius:11px;text-decoration:none!important;color:#aeb7d3!important;border:1px solid transparent}
+    .pnav:hover,.nav-active{color:#b898ff!important;background:rgba(116,70,239,.12);border-color:rgba(135,91,255,.24)}
+    .portfolio-main{padding:28px 30px 38px;min-width:0}.portfolio-title{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:18px}
+    .portfolio-title h1{font-size:31px!important;margin:0!important;color:#fff!important}.portfolio-sub{color:#9da8c8;margin-top:5px}
+    .live-chip{border:1px solid rgba(82,224,145,.27);color:#65e395;background:rgba(45,180,105,.08);padding:8px 11px;border-radius:999px;font-size:12px;white-space:nowrap}
+    .metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:16px}
+    .p-card{background:linear-gradient(145deg,rgba(13,22,43,.96),rgba(7,14,30,.98));border:1px solid rgba(133,151,255,.18);border-radius:14px;padding:16px;min-width:0}
+    .metric-label{color:#9fa9c8;font-size:12px}.metric-value{font-size:25px;font-weight:680;margin-top:7px;color:#fff}.positive{color:#45df82}.negative{color:#ff6d83}.metric-note{margin-top:5px;font-size:12px;color:#aab3cc}
+    .upper-grid{display:grid;grid-template-columns:1.08fr .92fr;gap:14px;margin-bottom:14px}.section-title{font-size:16px;font-weight:650;color:#f7f8ff;margin-bottom:14px}
+    .country-list,.area-list{display:grid;gap:10px}.country-row,.area-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;color:#e9ecf7;font-size:13px}
+    .bar{height:5px;border-radius:99px;background:#151f3b;overflow:hidden;grid-column:1/-1}.bar span{display:block;height:100%;background:linear-gradient(90deg,#6f48ff,#a76cff);border-radius:99px}
+    .holdings-head,.holding-row{display:grid;grid-template-columns:2fr .75fr .8fr .65fr .8fr;gap:12px;align-items:center}.holdings-head{color:#8f9abb;font-size:11px;padding:0 8px 10px}
+    .holding-row{padding:13px 8px;border-top:1px solid rgba(133,151,255,.13);font-size:13px;color:#f0f2fa}.asset-name{font-weight:620}.ticker{color:#9ea8c7;font-size:11px;margin-left:7px}.source-tag{font-size:10px;color:#929dbd;margin-top:3px}
+    .portfolio-foot{margin-top:14px;text-align:center;color:#a987ff;border:1px solid rgba(127,83,255,.17);background:rgba(99,57,210,.06);padding:13px;border-radius:12px}
+    .mobile-bottom{display:none;position:fixed;left:0;right:0;bottom:0;z-index:100;background:#060b19;border-top:1px solid rgba(133,151,255,.2);justify-content:space-around;padding:9px 5px 12px}
+    .mobile-bottom a{color:#aab3ce!important;text-decoration:none!important;font-size:10px;text-align:center}.mobile-bottom span{display:block;font-size:17px;margin-bottom:3px}.mobile-bottom .selected{color:#9d74ff!important}
+    @media(max-width:900px){.portfolio-shell{grid-template-columns:1fr}.portfolio-side{display:none}.portfolio-main{padding:20px 14px 95px}.metric-grid{grid-template-columns:repeat(2,1fr)}.upper-grid{grid-template-columns:1fr}.holdings-head{display:none}.holding-row{grid-template-columns:1.5fr .75fr .8fr}.holding-row>*:nth-child(4),.holding-row>*:nth-child(5){display:none}.mobile-bottom{display:flex!important}}
+    @media(max-width:480px){.portfolio-title{display:block}.live-chip{display:inline-block;margin-top:10px}.metric-grid{gap:9px}.p-card{padding:13px}.metric-value{font-size:19px}.holding-row{font-size:12px}.portfolio-main{padding-left:10px;padding-right:10px}}
+    </style>
+    """, unsafe_allow_html=True)
+
+    countries, areas = {}, {}
+    for row in rows:
+        countries[row["country"]] = countries.get(row["country"], 0) + row["current_value_eur"]
+        areas[row["area"]] = areas.get(row["area"], 0) + row["current_value_eur"]
+
+    country_rows = "".join(
+        f'<div class="country-row"><span>{html_lib.escape(name)}</span><b>{value/total*100:.1f}%</b><div class="bar"><span style="width:{value/total*100:.1f}%"></span></div></div>'
+        for name, value in sorted(countries.items(), key=lambda item: item[1], reverse=True)
+    )
+    area_rows = "".join(
+        f'<div class="area-row"><span>{html_lib.escape(name)}</span><b>{value/total*100:.1f}% · €{value:,.0f}</b><div class="bar"><span style="width:{value/total*100:.1f}%"></span></div></div>'
+        for name, value in sorted(areas.items(), key=lambda item: item[1], reverse=True)
+    )
+
+    st.markdown(f"""
+    <div class="portfolio-shell"><aside class="portfolio-side"><div class="portfolio-brand"><b>⌘</b>jugg</div>{portfolio_nav()}</aside>
+    <main class="portfolio-main"><div class="portfolio-title"><div><h1>Portfolio</h1><div class="portfolio-sub">Your investments, real impact.</div></div><div class="live-chip">● {price_status}</div></div>
+    <div class="metric-grid">
+      <div class="p-card"><div class="metric-label">Total Value</div><div class="metric-value">€{total:,.2f}</div><div class="metric-note {'positive' if day_change >= 0 else 'negative'}">{'▲' if day_change >= 0 else '▼'} €{abs(day_change):,.2f} today</div></div>
+      <div class="p-card"><div class="metric-label">Daily Change</div><div class="metric-value {'positive' if day_pct >= 0 else 'negative'}">{day_pct:+.2f}%</div><div class="metric-note">Latest available quotes</div></div>
+      <div class="p-card"><div class="metric-label">Investments</div><div class="metric-value">{len(rows)}</div><div class="metric-note">4 listed + 1 structured product</div></div>
+      <div class="p-card"><div class="metric-label">Saved Portfolio Value</div><div class="metric-value">€{saved_total:,.2f}</div><div class="metric-note">Your last supplied values</div></div>
+    </div>
+    <div class="upper-grid"><section class="p-card"><div class="section-title">Invested Countries</div>
+    """, unsafe_allow_html=True)
+
+    map_values = {row["country_iso3"]: row["current_value_eur"] for row in rows if row.get("country_iso3")}
+    fig = go.Figure(go.Choropleth(
+        locations=list(map_values.keys()), z=list(map_values.values()), locationmode="ISO-3",
+        colorscale=[[0, "#38207a"], [1, "#8c5cff"]], showscale=False,
+        marker_line_color="#303b5b", marker_line_width=.45,
+        hovertemplate="%{location}<br>€%{z:,.2f}<extra></extra>"
+    ))
+    fig.update_geos(showframe=False, showcoastlines=False, showcountries=True, countrycolor="#26304b", showland=True, landcolor="#151d33", showocean=True, oceancolor="#091126", bgcolor="rgba(0,0,0,0)", projection_type="natural earth")
+    fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=245)
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    st.markdown(f"""
+    <div class="country-list">{country_rows}</div></section>
+    <section class="p-card"><div class="section-title">Investment by Area</div><div class="area-list">{area_rows}</div></section></div>
+    """, unsafe_allow_html=True)
+
+    holding_rows = []
+    for row in rows:
+        daily_class = "positive" if row["daily_pct"] >= 0 else "negative"
+        holding_rows.append(
+            f'<div class="holding-row"><div><span class="asset-name">{html_lib.escape(row["name"])}</span><span class="ticker">{html_lib.escape(row["abbr"])}</span><div class="source-tag">{html_lib.escape(row["source_status"])}</div></div><div>€{row["current_value_eur"]:,.2f}</div><div>{row["current_value_eur"]/total*100:.1f}%</div><div class="{daily_class}">{row["daily_pct"]:+.2f}%</div><div>—</div></div>'
+        )
+
+    st.markdown(f"""
+    <section class="p-card"><div class="section-title">Holdings Overview</div><div class="holdings-head"><span>Asset</span><span>Value</span><span>Weight</span><span>Daily</span><span>Total Return</span></div>{''.join(holding_rows)}</section>
+    <div class="portfolio-foot">✦ More programs coming soon.</div></main></div>
+    <nav class="mobile-bottom"><a href="?page=hub" target="_self"><span>⌂</span>Home</a><a href="?page=hub" target="_self"><span>▦</span>Programs</a><a class="selected" href="?page=portfolio" target="_self"><span>◉</span>Portfolio</a><a href="?page=news" target="_self"><span>▥</span>News</a><a href="?page=portfolio" target="_self"><span>⚙</span>Settings</a></nav>
+    """, unsafe_allow_html=True)
+    st.caption("Quotes refresh every 15 minutes when the app opens. Because the saved portfolio data contains position values but not unit quantities, listed values are adjusted by the latest daily price move rather than presented as falsely exact mark-to-market values. The structured product remains at its last recorded valuation.")
+
+
 page = st.query_params.get("page", "hub")
 if isinstance(page, list):
     page = page[0] if page else "hub"
 
 if page == "news":
     render_news_finder()
+elif page == "portfolio":
+    render_portfolio()
 else:
     render_hub()

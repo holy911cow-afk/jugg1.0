@@ -17,3 +17,7 @@ streamlit run app.py
 ## Deploy on Streamlit Community Cloud
 
 Upload the files to a GitHub repository and select `app.py` as the entry point.
+
+## Portfolio update
+
+The Portfolio program uses the Dark & Sleek responsive layout, with a laptop sidebar and an iPhone bottom navigation. Quotes load from Yahoo Finance when the page opens and are cached for 15 minutes. Saved values are used if a quote is unavailable. The structured product remains at its last recorded valuation.
