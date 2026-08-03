@@ -1,0 +1,6 @@
+name,ticker,abbr,saved_value_eur,original_investment_eur,purchase_date,country,country_iso3,area,fx_ticker,proxy_ticker,news_terms,proxy_note
+Siemens Healthineers,SHL.DE,SHL,852.00,1010.50,10.03.2026,Germany,DEU,Healthcare,,,siemens healthineers|varian,
+Verbund,VER.VI,VER,838.50,922.50,05.05.2026,Austria,AUT,Renewable Energy,,,verbund|verbund ag,
+Tomra Systems,TOM.OL,TOM,1011.60,1033.20,27.04.2026,Norway,NOR,Industrials / Recycling,EURNOK=X,,tomra|tomra systems,
+ANTA Sports,2020.HK,ANTA,944.13,1051.25,01.06.2026,China / Hong Kong,CHN,Consumer / Sportswear,EURHKD=X,,anta sports|anta sports products|fila china|amer sports,
+MS Europe 26/27 ABJ,,MS EU 26/27,1017.40,1005.00,24.04.2026,Europe exposure,,Structured Product,,^STOXX50E,european stocks|euro stoxx|european markets,Euro Stoxx 50 is an exposure proxy and not the product's live valuation.

@@ -1,6 +1,9 @@
 
 import calendar
+import bisect
+import csv
 import html as html_lib
+import io
 import os
 import re
 import time
@@ -16,7 +19,7 @@ from streamlit.components.v1 import html as components_html
 
 
 st.set_page_config(
-    page_title="JUGG 3.1",
+    page_title="JUGG 4.0",
     page_icon="📰",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -483,7 +486,7 @@ def render_hub():
     st.markdown(hub_html, unsafe_allow_html=True)
 
 def render_news_finder():
-    st.markdown('<a class="back-link" href="?page=hub" target="_self">← Back to programs</a><style>.back-link{display:inline-flex;padding:10px 14px;border:1px solid rgba(255,255,255,.14);border-radius:12px;color:#eef1ff!important;text-decoration:none!important;background:rgba(255,255,255,.05);transition:.2s}.back-link:hover{transform:translateY(-1px);border-color:rgba(143,92,255,.5);background:rgba(143,92,255,.10)}</style>', unsafe_allow_html=True)
+    render_app_nav("News Finder")
     st.markdown("""
     <div style="padding:10px 0 20px">
       <div style="font-size:12px;letter-spacing:.13em;text-transform:uppercase;color:#8d9ac3">JUGG · Program 01</div>
@@ -574,11 +577,11 @@ def render_news_finder():
 # Dark & Sleek Portfolio
 # ============================================================
 PORTFOLIO_HOLDINGS = [
-    {"name": "Siemens Healthineers", "ticker": "SHL.DE", "abbr": "SHL", "saved_value_eur": 852.00, "original_investment_eur": 1010.50, "purchase_date": "10.03.2026", "country": "Germany", "country_iso3": "DEU", "area": "Healthcare"},
-    {"name": "Verbund", "ticker": "VER.VI", "abbr": "VER", "saved_value_eur": 838.50, "original_investment_eur": 922.50, "purchase_date": "05.05.2026", "country": "Austria", "country_iso3": "AUT", "area": "Renewable Energy"},
-    {"name": "Tomra Systems", "ticker": "TOM.OL", "abbr": "TOM", "saved_value_eur": 1011.60, "original_investment_eur": 1033.20, "purchase_date": "27.04.2026", "country": "Norway", "country_iso3": "NOR", "area": "Industrials / Recycling"},
-    {"name": "ANTA Sports", "ticker": "2020.HK", "abbr": "ANTA", "saved_value_eur": 944.13, "original_investment_eur": 1051.25, "purchase_date": "01.06.2026", "country": "China / Hong Kong", "country_iso3": "CHN", "area": "Consumer / Sportswear"},
-    {"name": "MS Europe 26/27 ABJ", "ticker": None, "abbr": "MS EU 26/27", "saved_value_eur": 1017.40, "original_investment_eur": 1005.00, "purchase_date": "24.04.2026", "country": "Europe exposure", "country_iso3": None, "area": "Structured Product"},
+    {"name": "Siemens Healthineers", "ticker": "SHL.DE", "abbr": "SHL", "saved_value_eur": 852.00, "original_investment_eur": 1010.50, "purchase_date": "10.03.2026", "country": "Germany", "country_iso3": "DEU", "area": "Healthcare", "fx_ticker": None},
+    {"name": "Verbund", "ticker": "VER.VI", "abbr": "VER", "saved_value_eur": 838.50, "original_investment_eur": 922.50, "purchase_date": "05.05.2026", "country": "Austria", "country_iso3": "AUT", "area": "Renewable Energy", "fx_ticker": None},
+    {"name": "Tomra Systems", "ticker": "TOM.OL", "abbr": "TOM", "saved_value_eur": 1011.60, "original_investment_eur": 1033.20, "purchase_date": "27.04.2026", "country": "Norway", "country_iso3": "NOR", "area": "Industrials / Recycling", "fx_ticker": "EURNOK=X"},
+    {"name": "ANTA Sports", "ticker": "2020.HK", "abbr": "ANTA", "saved_value_eur": 944.13, "original_investment_eur": 1051.25, "purchase_date": "01.06.2026", "country": "China / Hong Kong", "country_iso3": "CHN", "area": "Consumer / Sportswear", "fx_ticker": "EURHKD=X"},
+    {"name": "MS Europe 26/27 ABJ", "ticker": None, "proxy_ticker": "^STOXX50E", "abbr": "MS EU 26/27", "saved_value_eur": 1017.40, "original_investment_eur": 1005.00, "purchase_date": "24.04.2026", "country": "Europe exposure", "country_iso3": None, "area": "Structured Product", "fx_ticker": None},
 ]
 
 @st.cache_data(ttl=15 * 60, show_spinner=False)
@@ -717,6 +720,202 @@ def render_portfolio():
     <nav class="mobile-bottom"><a href="?page=hub" target="_self"><span>⌂</span>Home</a><a href="?page=hub" target="_self"><span>▦</span>Programs</a><a class="selected" href="?page=portfolio" target="_self"><span>◉</span>Portfolio</a><a href="?page=news" target="_self"><span>▥</span>News</a><a href="?page=portfolio" target="_self"><span>⚙</span>Settings</a></nav>
     """, unsafe_allow_html=True)
     st.caption("Quotes refresh every 15 minutes when the app opens. Because the saved portfolio data contains position values but not unit quantities, listed values are adjusted by the latest daily price move rather than presented as falsely exact mark-to-market values. The structured product remains at its last recorded valuation.")
+
+
+# ============================================================
+# JUGG 4.0 shared navigation and portfolio model
+# ============================================================
+def render_app_nav(section: str) -> None:
+    st.markdown(f"""
+    <div class="jugg-app-nav">
+      <div class="jugg-app-brand"><span>J</span><b>JUGG</b><em>{html_lib.escape(section)}</em></div>
+      <a href="?page=hub" target="_self" aria-label="Return to programs">← Programs</a>
+    </div>
+    <style>
+    .jugg-app-nav{{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 0 22px;padding:11px 13px;border:1px solid rgba(133,151,255,.17);border-radius:14px;background:rgba(8,14,31,.82);backdrop-filter:blur(14px)}}
+    .jugg-app-brand{{display:flex;align-items:center;gap:9px;color:#f7f8ff}}.jugg-app-brand span{{width:28px;height:28px;display:grid;place-items:center;border-radius:9px;background:linear-gradient(145deg,#8b5cff,#3152cf);box-shadow:0 0 20px rgba(126,77,255,.35);font-weight:800}}.jugg-app-brand b{{font-size:14px}}.jugg-app-brand em{{font-style:normal;color:#7f8bab;font-size:11px;border-left:1px solid rgba(133,151,255,.18);padding-left:9px}}
+    .jugg-app-nav a{{display:inline-flex;align-items:center;padding:9px 13px;border:1px solid rgba(133,151,255,.22);border-radius:10px;color:#edf0ff!important;background:rgba(255,255,255,.035);text-decoration:none!important;font-size:12px;transition:.2s}}.jugg-app-nav a:hover{{border-color:rgba(143,92,255,.6);background:rgba(116,70,239,.13);transform:translateY(-1px)}}
+    @media(max-width:620px){{.jugg-app-brand em{{display:none}}}}
+    </style>
+    """, unsafe_allow_html=True)
+
+
+PORTFOLIO_BASE_VALUE = 5022.45
+PORTFOLIO_BASE_TS = int(datetime(2026, 5, 1, tzinfo=timezone.utc).timestamp())
+
+
+def _point_value(points: list[tuple[int, float]], timestamp: int) -> float | None:
+    if not points:
+        return None
+    stamps = [point[0] for point in points]
+    index = bisect.bisect_right(stamps, timestamp) - 1
+    if index < 0:
+        index = 0
+    return float(points[index][1])
+
+
+def _position_factor(holding: dict, histories: dict, timestamp: int) -> float:
+    price_ticker = holding.get("ticker") or holding.get("proxy_ticker")
+    history = histories.get(price_ticker, {})
+    points = history.get("points", [])
+    if not points:
+        return 1.0
+    anchor = _point_value(points, PORTFOLIO_BASE_TS)
+    current = _point_value(points, timestamp)
+    if not anchor or current is None:
+        return 1.0
+    factor = current / anchor
+    fx_ticker = holding.get("fx_ticker")
+    if fx_ticker:
+        fx_points = histories.get(fx_ticker, {}).get("points", [])
+        fx_anchor = _point_value(fx_points, PORTFOLIO_BASE_TS)
+        fx_current = _point_value(fx_points, timestamp)
+        if fx_anchor and fx_current:
+            # EURNOK and EURHKD are local-currency units per euro.
+            factor *= fx_anchor / fx_current
+    return factor
+
+
+def build_portfolio_snapshot() -> tuple[list[dict], list[tuple[int, float]], str]:
+    holdings = get_portfolio_holdings()
+    tickers = {item.get("ticker") or item.get("proxy_ticker") for item in holdings}
+    tickers.update(item.get("fx_ticker") for item in holdings)
+    tickers.discard(None)
+    histories = {ticker: fetch_yahoo_history(ticker, "1y", "1d") for ticker in tickers}
+    dates = sorted({PORTFOLIO_BASE_TS} | {
+        timestamp for ticker, history in histories.items()
+        if ticker not in {item.get("fx_ticker") for item in holdings}
+        for timestamp, _ in history.get("points", []) if timestamp >= PORTFOLIO_BASE_TS
+    })
+    if not dates:
+        dates = [PORTFOLIO_BASE_TS, int(datetime.now(timezone.utc).timestamp())]
+    original_total = sum(max(0.0, _as_float(item.get("original_investment_eur"))) for item in holdings) or PORTFOLIO_BASE_VALUE
+    scale = PORTFOLIO_BASE_VALUE / original_total
+    series = []
+    for timestamp in dates:
+        value = sum(
+            _as_float(item.get("original_investment_eur")) * scale * _position_factor(item, histories, timestamp)
+            for item in holdings
+        )
+        series.append((timestamp, value))
+    series[0] = (series[0][0], PORTFOLIO_BASE_VALUE)
+    latest_ts = series[-1][0]
+    rows = []
+    for item in holdings:
+        row = dict(item)
+        ticker = item.get("ticker") or item.get("proxy_ticker")
+        history = histories.get(ticker, {})
+        current_value = _as_float(item.get("original_investment_eur")) * scale * _position_factor(item, histories, latest_ts)
+        row["current_value_eur"] = current_value
+        row["daily_pct"] = _as_float(history.get("daily_change"))
+        row["market_price"] = history.get("price")
+        row["currency"] = history.get("currency", "")
+        if item.get("ticker") and history.get("ok"):
+            row["source_status"] = "Market-based estimate"
+        elif item.get("proxy_ticker") and history.get("ok"):
+            row["source_status"] = "Proxy estimate — not product value"
+        else:
+            row["current_value_eur"] = _as_float(item.get("saved_value_eur"), current_value)
+            row["source_status"] = "Saved value — quote unavailable"
+        rows.append(row)
+    available = sum(1 for item in holdings if histories.get(item.get("ticker") or item.get("proxy_ticker"), {}).get("ok"))
+    status = f"{available}/{len(holdings)} market series refreshed"
+    return rows, series, status
+
+
+def live_portfolio_rows() -> tuple[list[dict], str]:
+    rows, _, status = build_portfolio_snapshot()
+    return rows, status
+
+
+def _portfolio_chart(points: list[tuple[int, float]]) -> go.Figure:
+    x_values = [datetime.fromtimestamp(timestamp, tz=timezone.utc) for timestamp, _ in points]
+    y_values = [value for _, value in points]
+    positive = y_values[-1] >= y_values[0] if len(y_values) > 1 else True
+    color = "#59e09a" if positive else "#ff7186"
+    floor = min(y_values) - max(8.0, (max(y_values) - min(y_values)) * .18)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=x_values, y=[floor] * len(x_values), mode="lines", line=dict(width=0), hoverinfo="skip", showlegend=False))
+    fig.add_trace(go.Scatter(
+        x=x_values, y=y_values, mode="lines", fill="tonexty", name="Portfolio",
+        line=dict(width=2.6, color=color, shape="spline", smoothing=.35),
+        fillcolor="rgba(89,224,154,.10)" if positive else "rgba(255,113,134,.10)",
+        hovertemplate="%{x|%d %b %Y}<br><b>€%{y:,.2f}</b><extra></extra>",
+    ))
+    fig.add_hline(y=PORTFOLIO_BASE_VALUE, line_dash="dot", line_width=1, line_color="rgba(169,139,255,.45)", annotation_text="€5,022.45 start", annotation_font_color="#a99ad4")
+    fig.update_layout(
+        height=390, margin=dict(l=5, r=8, t=20, b=5), hovermode="x unified", showlegend=False,
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#aeb8d5", size=11),
+        xaxis=dict(showgrid=False, color="#7f8bad", fixedrange=False, showspikes=True, spikemode="across", spikedash="dot", spikecolor="rgba(190,200,235,.35)"),
+        yaxis=dict(showgrid=True, gridcolor="rgba(130,150,210,.09)", color="#7f8bad", tickprefix="€", fixedrange=False, rangemode="normal"),
+    )
+    return fig
+
+
+def render_portfolio() -> None:
+    render_app_nav("Portfolio")
+    rows, full_series, price_status = build_portfolio_snapshot()
+    total = sum(row["current_value_eur"] for row in rows)
+    base_change = total - PORTFOLIO_BASE_VALUE
+    base_pct = base_change / PORTFOLIO_BASE_VALUE * 100
+    st.markdown("""
+    <style>
+    .main .block-container{max-width:1420px;padding:1.15rem 1.5rem 4rem!important}.p40-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin:5px 0 18px}.p40-head h1{font-size:36px!important;margin:0!important}.p40-sub{color:#8e9abb;font-size:13px;margin-top:5px}.p40-live{font-size:11px;color:#63df96;border:1px solid rgba(82,224,145,.25);background:rgba(45,180,105,.07);padding:8px 11px;border-radius:999px;white-space:nowrap}
+    .p40-value{padding:22px 24px;margin-bottom:16px;border-radius:17px;border:1px solid rgba(133,151,255,.18);background:radial-gradient(circle at 100% 0,rgba(126,77,255,.14),transparent 38%),linear-gradient(145deg,rgba(15,24,49,.98),rgba(7,13,29,.99));box-shadow:0 18px 50px rgba(0,0,0,.2)}.p40-value small{display:block;color:#8f9aba;font-size:11px;letter-spacing:.08em;text-transform:uppercase}.p40-value strong{display:block;color:#fff;font-size:36px;letter-spacing:-.03em;margin-top:6px}.p40-value span{font-size:12px}.p40-note{color:#7f8bad;font-size:10px;margin-top:8px;line-height:1.45}
+    .p40-section{margin:20px 0 9px;color:#f4f6ff;font-size:17px;font-weight:680}.p40-grid{display:grid;gap:10px}.p40-row{display:grid;grid-template-columns:1fr auto;gap:9px;color:#e6eaf8;font-size:12px}.p40-bar{grid-column:1/-1;height:5px;border-radius:99px;background:#151f39;overflow:hidden}.p40-bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#6d4cff,#9e73ff)}
+    .p40-table-head,.p40-holding{display:grid;grid-template-columns:2fr .8fr .8fr .75fr;gap:12px;align-items:center}.p40-table-head{padding:0 8px 9px;color:#7f8bad;font-size:10px}.p40-holding{padding:13px 8px;border-top:1px solid rgba(133,151,255,.11);font-size:12px;color:#edf0fa}.p40-holding b{font-size:12px}.p40-holding small{display:block;color:#7f8bad;font-size:9px;margin-top:3px}.pos{color:#4cdf88!important}.neg{color:#ff7186!important}
+    [data-testid="stVerticalBlockBorderWrapper"]{background:linear-gradient(145deg,rgba(13,22,43,.97),rgba(7,14,30,.99))!important;border:1px solid rgba(133,151,255,.18)!important;border-radius:16px!important;box-shadow:0 15px 45px rgba(0,0,0,.16)!important}
+    @media(max-width:760px){.main .block-container{padding:.8rem .75rem 4rem!important}.p40-head{display:block}.p40-live{display:inline-block;margin-top:10px}.p40-value strong{font-size:29px}.p40-table-head{display:none}.p40-holding{grid-template-columns:1.5fr .8fr .7fr}.p40-holding>*:nth-child(4){display:none}}
+    </style>
+    """, unsafe_allow_html=True)
+    st.markdown(f'<div class="p40-head"><div><h1>Portfolio</h1><div class="p40-sub">Current value, allocation and performance since May 2026.</div></div><div class="p40-live">● {html_lib.escape(price_status)}</div></div>', unsafe_allow_html=True)
+    change_class = "pos" if base_change >= 0 else "neg"
+    st.markdown(f'<div class="p40-value"><small>Current Portfolio Value</small><strong>€{total:,.2f}</strong><span class="{change_class}">{base_change:+,.2f} · {base_pct:+.2f}% since 1 May 2026</span><div class="p40-note">Market-based estimate refreshed on opening. The structured product uses a clearly labelled Euro Stoxx 50 exposure proxy; exact broker valuation requires position quantities and the product quote.</div></div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="p40-section">Portfolio Value</div>', unsafe_allow_html=True)
+    timeline = st.radio("Portfolio chart period", ["1M", "3M", "Since May"], index=2, horizontal=True, label_visibility="collapsed", key="jugg40_portfolio_timeline")
+    cutoff_days = {"1M": 31, "3M": 93}.get(timeline)
+    chart_series = full_series
+    if cutoff_days:
+        cutoff = full_series[-1][0] - cutoff_days * 86400
+        chart_series = [point for point in full_series if point[0] >= cutoff] or full_series
+    with st.container(border=True):
+        st.plotly_chart(_portfolio_chart(chart_series), use_container_width=True, config={"displayModeBar": False, "scrollZoom": True}, key="jugg40_portfolio_history")
+        st.caption("Estimated portfolio series based on market-price and relevant EUR currency movements, normalized to €5,022.45 on 1 May 2026. Drag to zoom; double-click to reset.")
+
+    countries, areas = {}, {}
+    for row in rows:
+        countries[row["country"]] = countries.get(row["country"], 0.0) + row["current_value_eur"]
+        areas[row["area"]] = areas.get(row["area"], 0.0) + row["current_value_eur"]
+    left, right = st.columns([1.08, .92], gap="medium")
+    with left:
+        with st.container(border=True):
+            st.markdown('<div class="p40-section" style="margin-top:0">Invested Countries</div>', unsafe_allow_html=True)
+            map_values = {}
+            for row in rows:
+                if row.get("country_iso3"):
+                    map_values[row["country_iso3"]] = map_values.get(row["country_iso3"], 0.0) + row["current_value_eur"]
+            fig = go.Figure(go.Choropleth(locations=list(map_values), z=list(map_values.values()), locationmode="ISO-3", colorscale=[[0,"#34206f"],[1,"#9566ff"]], showscale=False, marker_line_color="#34405e", marker_line_width=.5, hovertemplate="%{location}<br>€%{z:,.2f}<extra></extra>"))
+            fig.update_geos(fitbounds="locations", visible=False, showframe=False, showcoastlines=False, showcountries=True, countrycolor="#26304b", showland=True, landcolor="#141c31", showocean=True, oceancolor="#091126", bgcolor="rgba(0,0,0,0)")
+            fig.update_layout(margin=dict(l=0,r=0,t=0,b=0), height=330, paper_bgcolor="rgba(0,0,0,0)")
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key="jugg40_country_map")
+            country_html = "".join(f'<div class="p40-row"><span>{html_lib.escape(name)}</span><b>{value/total*100:.1f}%</b><div class="p40-bar"><i style="width:{value/total*100:.1f}%"></i></div></div>' for name,value in sorted(countries.items(), key=lambda pair:pair[1], reverse=True))
+            st.markdown(f'<div class="p40-grid">{country_html}</div>', unsafe_allow_html=True)
+    with right:
+        with st.container(border=True):
+            st.markdown('<div class="p40-section" style="margin-top:0">Investment by Area</div>', unsafe_allow_html=True)
+            area_html = "".join(f'<div class="p40-row"><span>{html_lib.escape(name)}</span><b>{value/total*100:.1f}% · €{value:,.0f}</b><div class="p40-bar"><i style="width:{value/total*100:.1f}%"></i></div></div>' for name,value in sorted(areas.items(), key=lambda pair:pair[1], reverse=True))
+            st.markdown(f'<div class="p40-grid">{area_html}</div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="p40-section">Holdings Overview</div>', unsafe_allow_html=True)
+    with st.container(border=True):
+        st.markdown('<div class="p40-table-head"><span>Asset</span><span>Estimated value</span><span>Weight</span><span>Latest day</span></div>', unsafe_allow_html=True)
+        holding_html = []
+        for row in rows:
+            daily_class = "pos" if row["daily_pct"] >= 0 else "neg"
+            quote = f'{row.get("market_price"):,.2f} {row.get("currency", "")}' if row.get("market_price") is not None else "Quote unavailable"
+            holding_html.append(f'<div class="p40-holding"><div><b>{html_lib.escape(row["name"])}</b> · {html_lib.escape(row["abbr"])}<small>{html_lib.escape(row["source_status"])} · {html_lib.escape(quote)}</small></div><div>€{row["current_value_eur"]:,.2f}</div><div>{row["current_value_eur"]/total*100:.1f}%</div><div class="{daily_class}">{row["daily_pct"]:+.2f}%</div></div>')
+        st.markdown("".join(holding_html), unsafe_allow_html=True)
 
 
 # ============================================================
@@ -863,6 +1062,80 @@ def _safe_secret(name: str, default: str = "") -> str:
         return default
 
 
+def _as_float(value, default: float = 0.0) -> float:
+    try:
+        return float(str(value).replace(" ", "").replace(",", "."))
+    except (TypeError, ValueError):
+        return default
+
+
+@st.cache_data(ttl=5 * 60, show_spinner=False)
+def _fetch_external_holdings_csv(url: str) -> list[dict]:
+    """Load a public CSV so holdings can be changed without redeploying the app."""
+    response = requests.get(url, headers={"User-Agent": "Mozilla/5.0 JUGG/4.0"}, timeout=15)
+    response.raise_for_status()
+    rows = []
+    for raw in csv.DictReader(io.StringIO(response.text)):
+        name = clean_text(raw.get("name", ""))
+        ticker = clean_text(raw.get("ticker", "")) or None
+        if not name:
+            continue
+        rows.append({
+            "name": name,
+            "ticker": ticker,
+            "proxy_ticker": clean_text(raw.get("proxy_ticker", "")) or None,
+            "abbr": clean_text(raw.get("abbr", "")) or (ticker or name[:8]),
+            "saved_value_eur": _as_float(raw.get("saved_value_eur")),
+            "original_investment_eur": _as_float(raw.get("original_investment_eur")),
+            "purchase_date": clean_text(raw.get("purchase_date", "")),
+            "country": clean_text(raw.get("country", "")) or "Not specified",
+            "country_iso3": clean_text(raw.get("country_iso3", "")).upper() or None,
+            "area": clean_text(raw.get("area", "")) or "Other",
+            "fx_ticker": clean_text(raw.get("fx_ticker", "")) or None,
+            "news_terms": clean_text(raw.get("news_terms", "")),
+            "proxy_note": clean_text(raw.get("proxy_note", "")),
+        })
+    if not rows:
+        raise ValueError("The holdings CSV contains no valid rows.")
+    return rows
+
+
+def get_portfolio_holdings() -> list[dict]:
+    url = _safe_secret("PORTFOLIO_DATA_URL")
+    if url:
+        try:
+            return _fetch_external_holdings_csv(url)
+        except Exception:
+            # Keep the app usable if the external sheet is temporarily unavailable.
+            pass
+    return [dict(item) for item in PORTFOLIO_HOLDINGS]
+
+
+def get_holding_config(holding_name: str) -> dict:
+    if holding_name in HOLDING_BRIEFING_DATA:
+        return dict(HOLDING_BRIEFING_DATA[holding_name])
+    holding = next((item for item in get_portfolio_holdings() if item["name"] == holding_name), None)
+    if not holding:
+        return {}
+    ticker = holding.get("ticker") or holding.get("proxy_ticker")
+    terms = [term.strip().lower() for term in holding.get("news_terms", "").split("|") if term.strip()]
+    if not terms:
+        terms = [holding_name.lower()]
+    area = holding.get("area", "the relevant sector")
+    country = holding.get("country", "its home market")
+    proxy_note = holding.get("proxy_note")
+    if not holding.get("ticker") and ticker and not proxy_note:
+        proxy_note = "The chart uses a configured market proxy. It is not the product's live valuation."
+    return {
+        "ticker": ticker,
+        "chart_label": holding_name if holding.get("ticker") else f"{holding_name} proxy",
+        "direct_terms": terms,
+        "queries": [f'"{holding_name}"', f'"{area}" OR "{country}"'],
+        "context": f"{area}, {country}, company developments, sector demand, currencies and market valuation",
+        "proxy_note": proxy_note,
+    }
+
+
 def _query_value(name: str, default: str = "") -> str:
     value = st.query_params.get(name, default)
     if isinstance(value, list):
@@ -996,7 +1269,7 @@ def fetch_market_news_48h() -> list[dict]:
 
 @st.cache_data(ttl=20 * 60, show_spinner=False)
 def fetch_holding_news_48h(holding_name: str) -> list[dict]:
-    config = HOLDING_BRIEFING_DATA.get(holding_name, {})
+    config = get_holding_config(holding_name)
     articles = []
     for query in config.get("queries", []):
         result = fetch_rss_feed(google_news_rss_url(query, "2d"))
@@ -1106,23 +1379,25 @@ def _market_overview_chart(snapshot: list[dict]) -> go.Figure:
 
 def _holding_chart(holding_name: str, history: dict) -> go.Figure:
     fig = go.Figure()
-    points = history.get("recent_points") or history.get("points", [])
+    points = history.get("points", [])
     if points:
         x_values = [datetime.fromtimestamp(ts, tz=timezone.utc) for ts, _ in points]
         y_values = [value for _, value in points]
         positive = y_values[-1] >= y_values[0] if len(y_values) >= 2 else True
         line_color = "#55df91" if positive else "#ff6e83"
+        floor = min(y_values) - max((max(y_values) - min(y_values)) * .18, abs(min(y_values)) * .006)
+        fig.add_trace(go.Scatter(x=x_values, y=[floor] * len(x_values), mode="lines", line=dict(width=0), hoverinfo="skip", showlegend=False))
         fig.add_trace(go.Scatter(
-            x=x_values, y=y_values, mode="lines", fill="tozeroy",
-            line=dict(width=2.5, color=line_color), fillcolor="rgba(83,223,145,.08)" if positive else "rgba(255,110,131,.08)",
+            x=x_values, y=y_values, mode="lines", fill="tonexty",
+            line=dict(width=2.5, color=line_color, shape="spline", smoothing=.3), fillcolor="rgba(83,223,145,.09)" if positive else "rgba(255,110,131,.09)",
             name=holding_name, hovertemplate="%{x|%d %b %H:%M}<br>%{y:,.2f}<extra></extra>",
         ))
     fig.update_layout(
-        height=360, margin=dict(l=12, r=12, t=15, b=8),
+        height=410, margin=dict(l=10, r=10, t=16, b=8), hovermode="x unified",
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color="#aeb8d5"), showlegend=False,
-        xaxis=dict(showgrid=False, color="#8390b4"),
-        yaxis=dict(showgrid=True, gridcolor="rgba(130,150,210,.10)", color="#8390b4"),
+        xaxis=dict(showgrid=False, color="#8390b4", showspikes=True, spikemode="across", spikedash="dot", spikecolor="rgba(190,200,235,.4)"),
+        yaxis=dict(showgrid=True, gridcolor="rgba(130,150,210,.10)", color="#8390b4", fixedrange=False),
     )
     return fig
 
@@ -1161,7 +1436,7 @@ def _extract_openai_text(payload: dict) -> str:
 def _call_openai(prompt: str, max_output_tokens: int) -> tuple[str, str]:
     api_key = _safe_secret("OPENAI_API_KEY")
     if not api_key:
-        return "", "OPENAI_API_KEY is not configured."
+        return "", "AI_NOT_CONFIGURED"
     model = _safe_secret("OPENAI_MODEL", "gpt-5-mini")
     try:
         response = requests.post(
@@ -1193,9 +1468,7 @@ def _trim_to_max_words(text: str, max_words: int) -> str:
 def _fallback_market_digest(snapshot: list[dict], articles: list[dict], limits: tuple[int, int]) -> str:
     available = [item for item in snapshot if item.get("ok")]
     movers = sorted(available, key=lambda item: abs(item.get("change_48h", 0)), reverse=True)
-    sentences = [
-        "AI generation is not configured, so this is a factual evidence digest built from the live market snapshot and selected 48-hour headlines rather than an AI-written causal conclusion."
-    ]
+    sentences = ["This evidence briefing combines the live market snapshot with selected, timestamped headlines from the previous 48 hours."]
     if movers:
         strongest = movers[0]
         direction = "rose" if strongest.get("change_48h", 0) >= 0 else "fell"
@@ -1215,9 +1488,9 @@ def _fallback_market_digest(snapshot: list[dict], articles: list[dict], limits: 
 
 
 def _fallback_holding_digest(holding_name: str, history: dict, articles: list[dict], market_articles: list[dict], limits: tuple[int, int]) -> str:
-    config = HOLDING_BRIEFING_DATA[holding_name]
+    config = get_holding_config(holding_name)
     text = [
-        "AI generation is not configured, so this is an evidence digest rather than an AI-generated attribution.",
+        "This evidence briefing combines the observed market move with selected company, sector and broader-market headlines.",
         f"For {holding_name}, the monitored market price changed {history.get('change_48h', 0):+.2f}% over {history.get('basis', 'the available period')}.",
         f"The most relevant exposure areas are {config['context']}.",
     ]
@@ -1267,7 +1540,7 @@ SELECTED NEWS FROM THE LAST 48 HOURS:
 
 def generate_holding_briefing(holding_name: str, history: dict, articles: list[dict], market_articles: list[dict], length_label: str) -> dict:
     limits = BRIEFING_LENGTHS[length_label]
-    config = HOLDING_BRIEFING_DATA[holding_name]
+    config = get_holding_config(holding_name)
     prompt = f"""
 Write a 48-hour briefing for the investor's holding: {holding_name}. Use only the supplied evidence. The goal is to understand why the holding's market price may have moved.
 
@@ -1348,13 +1621,13 @@ def _render_briefing_css() -> None:
     [data-testid="stForm"]{border:1px solid rgba(69,221,137,.48)!important;background:linear-gradient(145deg,rgba(22,79,52,.18),rgba(9,35,27,.22))!important;border-radius:14px!important;padding:13px 14px 4px!important}
     [data-testid="stForm"] [data-testid="stWidgetLabel"] p{color:#bcebd0!important}
     .proxy-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.proxy-card{min-height:116px;padding:12px;border:1px solid rgba(132,153,255,.17);border-radius:13px;background:linear-gradient(145deg,rgba(17,26,53,.97),rgba(9,15,33,.98));overflow:hidden}.proxy-top{display:flex;justify-content:space-between;gap:8px}.proxy-name{font-size:12px;font-weight:680;color:#f3f5ff}.proxy-region{font-size:9px;color:#7f8db3;text-transform:uppercase;letter-spacing:.08em}.proxy-price{margin-top:7px;font-size:16px;font-weight:700;color:#fff}.proxy-change{font-size:11px;margin-top:2px}.proxy-role{font-size:9.5px;color:#8f9abc;margin-top:3px}.spark{width:100%;height:35px;margin-top:5px}.spark polyline,.spark path{fill:none;stroke:#8b98b8;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.spark.up polyline{stroke:#4cdf88}.spark.down polyline{stroke:#ff687e}
-    .driver-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:11px}.driver-card{display:block;text-decoration:none!important;min-height:136px;padding:14px;border:1px solid rgba(133,151,255,.18);border-radius:14px;background:linear-gradient(145deg,rgba(16,25,51,.96),rgba(8,15,32,.98));transition:.22s}.driver-card:hover{transform:translateY(-3px);border-color:rgba(143,92,255,.62);box-shadow:0 13px 32px rgba(75,48,190,.20)}.driver-category{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#9b7eff}.driver-title{font-size:13px;font-weight:680;color:#f5f6ff;margin-top:7px}.driver-lead{font-size:10px;line-height:1.42;color:#9ba5c3;margin-top:8px}.driver-count{font-size:9px;color:#62d995;margin-top:9px}
-    .holding-card-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}.holding-brief-card{display:block;text-decoration:none!important;min-height:182px;padding:15px;border:1px solid rgba(133,151,255,.18);border-radius:15px;background:linear-gradient(145deg,rgba(17,26,53,.97),rgba(8,14,31,.99));transition:.23s}.holding-brief-card:hover{transform:translateY(-4px);border-color:rgba(143,92,255,.64);box-shadow:0 15px 34px rgba(64,42,170,.23)}.holding-avatar{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(145deg,#7650e7,#254fae);color:#fff;font-size:11px;font-weight:750}.holding-card-name{color:#f5f7ff;font-size:12px;font-weight:680;margin-top:10px;min-height:34px}.holding-card-price{font-size:10px;color:#8794b7;margin-top:3px}.holding-impact{display:flex;align-items:center;justify-content:space-between;font-size:10px;color:#94a0bf;margin-top:8px}.pos{color:#4cdf88!important}.neg{color:#ff687e!important}
+    .driver-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:11px;padding-bottom:15px}.driver-card{display:block;text-decoration:none!important;min-height:136px;padding:14px;border:1px solid rgba(133,151,255,.18);border-radius:14px;background:linear-gradient(145deg,rgba(16,25,51,.96),rgba(8,15,32,.98));transition:.22s}.driver-card:hover{transform:translateY(-3px);border-color:rgba(143,92,255,.62);box-shadow:0 13px 32px rgba(75,48,190,.20)}.driver-category{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#9b7eff}.driver-title{font-size:13px;font-weight:680;color:#f5f6ff;margin-top:7px}.driver-lead{font-size:10px;line-height:1.42;color:#9ba5c3;margin-top:8px}.driver-count{font-size:9px;color:#62d995;margin-top:9px}
+    .holding-card-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;padding-bottom:15px}.holding-brief-card{display:block;text-decoration:none!important;min-height:182px;padding:15px;border:1px solid rgba(133,151,255,.18);border-radius:15px;background:linear-gradient(145deg,rgba(17,26,53,.97),rgba(8,14,31,.99));transition:.23s}.holding-brief-card:hover{transform:translateY(-4px);border-color:rgba(143,92,255,.64);box-shadow:0 15px 34px rgba(64,42,170,.23)}.holding-avatar{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(145deg,#7650e7,#254fae);color:#fff;font-size:11px;font-weight:750}.holding-card-name{color:#f5f7ff;font-size:12px;font-weight:680;margin-top:10px;min-height:34px}.holding-card-price{font-size:10px;color:#8794b7;margin-top:3px}.holding-impact{display:flex;align-items:center;justify-content:space-between;font-size:10px;color:#94a0bf;margin-top:8px}.pos{color:#4cdf88!important}.neg{color:#ff687e!important}
     .brief-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:7px 0 20px}.brief-tab{display:inline-flex;padding:9px 13px;border-radius:10px;border:1px solid rgba(133,151,255,.18);background:rgba(255,255,255,.025);text-decoration:none!important;color:#aeb8d4!important;font-size:12px}.brief-tab.active,.brief-tab:hover{color:#fff!important;border-color:rgba(143,92,255,.58);background:rgba(116,70,239,.15)}
     .briefing-copy{font-size:15px;line-height:1.72;color:#e8ebf6}.briefing-meta{display:flex;gap:10px;flex-wrap:wrap;margin:11px 0 18px}.meta-pill{font-size:10px;color:#aab4d2;border:1px solid rgba(133,151,255,.17);border-radius:999px;padding:6px 9px;background:rgba(255,255,255,.025)}
     .source-list{display:grid;gap:8px}.source-row{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;padding:10px 12px;border-top:1px solid rgba(133,151,255,.11);color:#dfe4f4}.source-number{color:#9b7eff;font-size:11px}.source-row a{color:#eef1ff!important;text-decoration:none!important;font-size:12px}.source-row a:hover{color:#ac91ff!important}.source-meta{font-size:10px;color:#7f8baa}
     .proxy-note{margin:10px 0;padding:11px 13px;border-radius:11px;border:1px solid rgba(246,200,95,.25);background:rgba(246,200,95,.06);color:#e7d9aa;font-size:11px;line-height:1.5}
-    .section-spacer{height:18px}.estimate-pill{font-size:8px;letter-spacing:.1em;color:#bfaeff;border:1px solid rgba(155,126,255,.35);border-radius:999px;padding:4px 7px;vertical-align:middle}.regime-name{font-size:28px;font-weight:750;color:#fff;margin:9px 0}.regime-name span{display:block;font-size:12px;color:#b3bdd8;margin-top:4px}.plain-copy{color:#dce1f0;font-size:13px;line-height:1.55}.signal-pill{display:inline-flex;margin:4px 5px 0 0;padding:6px 8px;border-radius:999px;background:rgba(143,92,255,.1);border:1px solid rgba(143,92,255,.24);color:#d8cffd;font-size:10px}.flow-row{display:grid;grid-template-columns:minmax(150px,1fr) minmax(100px,.8fr) 110px;gap:12px;align-items:center;padding:7px 0;border-bottom:1px solid rgba(133,151,255,.08);color:#e9ecf8;font-size:11px}.flow-row small{display:block;color:#8f9abb;margin-top:2px}.flow-track{height:6px;background:rgba(255,255,255,.07);border-radius:99px;overflow:hidden}.flow-track i{display:block;height:100%;border-radius:99px}.flow-in{background:#52d78c}.flow-out{background:#ff7186}.flow-flat{background:#d2aa58}.category-heading{margin:18px 0 8px}.category-heading b{color:#f5f7ff;font-size:15px}.category-heading small{display:block;color:#8f9abb;font-size:11px;margin-top:3px}.indicator-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px}.indicator-card{display:block;min-height:178px;padding:14px;border:1px solid rgba(133,151,255,.17);border-radius:14px;background:linear-gradient(145deg,rgba(17,26,53,.97),rgba(8,15,32,.99));text-decoration:none!important;transition:.2s}.indicator-card:hover{transform:translateY(-3px);border-color:rgba(143,92,255,.62)}.indicator-card.status-good{border-top-color:rgba(76,223,136,.55)}.indicator-card.status-bad{border-top-color:rgba(255,104,126,.55)}.indicator-card.status-neutral{border-top-color:rgba(210,170,88,.55)}.indicator-top{display:flex;justify-content:space-between;gap:8px}.indicator-top b{color:#f5f7ff;font-size:12px}.indicator-top span{color:#cbd3e9;font-size:10px}.indicator-value{font-size:17px;font-weight:700;color:#fff;margin-top:8px}.indicator-card p{color:#aeb8d1;font-size:10px;line-height:1.45;min-height:29px;margin:5px 0}.indicator-card small{color:#a78aff;font-size:9px}
+    .section-spacer{height:26px}.estimate-pill{font-size:8px;letter-spacing:.1em;color:#bfaeff;border:1px solid rgba(155,126,255,.35);border-radius:999px;padding:4px 7px;vertical-align:middle}.regime-name{font-size:28px;font-weight:750;color:#fff;margin:9px 0}.regime-name span{display:block;font-size:12px;color:#b3bdd8;margin-top:4px}.plain-copy{color:#dce1f0;font-size:13px;line-height:1.55}.signal-pill{display:inline-flex;margin:4px 5px 0 0;padding:6px 8px;border-radius:999px;background:rgba(143,92,255,.1);border:1px solid rgba(143,92,255,.24);color:#d8cffd;font-size:10px}.flow-row{display:grid;grid-template-columns:minmax(150px,1fr) minmax(100px,.8fr) 110px;gap:12px;align-items:center;padding:7px 0;border-bottom:1px solid rgba(133,151,255,.08);color:#e9ecf8;font-size:11px}.flow-row small{display:block;color:#8f9abb;margin-top:2px}.flow-track{height:6px;background:rgba(255,255,255,.07);border-radius:99px;overflow:hidden}.flow-track i{display:block;height:100%;border-radius:99px}.flow-in{background:#52d78c}.flow-out{background:#ff7186}.flow-flat{background:#d2aa58}.category-heading{margin:18px 0 8px}.category-heading b{color:#f5f7ff;font-size:15px}.category-heading small{display:block;color:#8f9abb;font-size:11px;margin-top:3px}.indicator-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px}.indicator-card{display:block;min-height:178px;padding:14px;border:1px solid rgba(133,151,255,.17);border-radius:14px;background:linear-gradient(145deg,rgba(17,26,53,.97),rgba(8,15,32,.99));text-decoration:none!important;transition:.2s}.indicator-card:hover{transform:translateY(-3px);border-color:rgba(143,92,255,.62)}.indicator-card.status-good{border-top-color:rgba(76,223,136,.55)}.indicator-card.status-bad{border-top-color:rgba(255,104,126,.55)}.indicator-card.status-neutral{border-top-color:rgba(210,170,88,.55)}.indicator-top{display:flex;justify-content:space-between;gap:8px}.indicator-top b{color:#f5f7ff;font-size:12px}.indicator-top span{color:#cbd3e9;font-size:10px}.indicator-value{font-size:17px;font-weight:700;color:#fff;margin-top:8px}.indicator-card p{color:#aeb8d1;font-size:10px;line-height:1.45;min-height:29px;margin:5px 0}.indicator-card small{color:#a78aff;font-size:9px}
     @media(max-width:1120px){.proxy-grid,.indicator-grid{grid-template-columns:repeat(2,1fr)}.driver-grid{grid-template-columns:repeat(3,1fr)}.holding-card-grid{grid-template-columns:repeat(3,1fr)}}
     @media(max-width:760px){.main .block-container{padding:1rem .75rem 4rem!important}.mb-topbar{display:block}.mb-status{display:inline-block;margin-top:10px}.proxy-grid,.indicator-grid{grid-template-columns:1fr}.driver-grid{grid-template-columns:1fr}.holding-card-grid{grid-template-columns:1fr}.flow-row{grid-template-columns:1fr}.source-row{grid-template-columns:24px 1fr}.source-meta{grid-column:2}.briefing-copy{font-size:14px}}
     </style>
@@ -1411,9 +1684,11 @@ def _render_driver_cards(drivers: list[dict]) -> None:
 
 def _render_holding_cards() -> None:
     cards = []
-    for holding in PORTFOLIO_HOLDINGS:
+    for holding in get_portfolio_holdings():
         name = holding["name"]
-        config = HOLDING_BRIEFING_DATA[name]
+        config = get_holding_config(name)
+        if not config.get("ticker"):
+            continue
         history = fetch_yahoo_history(config["ticker"])
         values = [value for _, value in (history.get("recent_points") or history.get("points", []))]
         change = float(history.get("change_48h", 0)) if history.get("ok") else 0.0
@@ -1500,8 +1775,10 @@ def _render_market_summary() -> None:
         return
     word_count = len(result["text"].split())
     st.markdown(f'<div class="briefing-meta"><span class="meta-pill">{html_lib.escape(result["length"])}</span><span class="meta-pill">{word_count} words</span><span class="meta-pill">Generated {html_lib.escape(result["created_at"])}</span><span class="meta-pill">{html_lib.escape(result["generated_by"])}</span></div>', unsafe_allow_html=True)
-    if result.get("error"):
-        st.info(f"AI service note: {result['error']} The page therefore shows the evidence-based fallback digest.")
+    if result.get("error") == "AI_NOT_CONFIGURED":
+        st.caption("Evidence mode · Add OPENAI_API_KEY in Streamlit Secrets to enable AI-written causal synthesis. The factual digest below remains fully usable.")
+    elif result.get("error"):
+        st.warning("AI synthesis was temporarily unavailable, so JUGG produced the evidence digest instead.")
     with st.container(border=True):
         st.markdown(result["text"])
     st.markdown("## Sources used")
@@ -1526,8 +1803,10 @@ def _render_driver_detail(driver_id: str) -> None:
     result = st.session_state[cache_key]
     st.markdown(f"# {driver['title']}")
     st.caption(f"{driver['category']} · Based on selected news from the last 48 hours")
-    if result.get("error"):
-        st.info(f"AI service note: {result['error']} The educational fallback is shown instead.")
+    if result.get("error") == "AI_NOT_CONFIGURED":
+        st.caption("Evidence explanation · Configure OPENAI_API_KEY in Streamlit Secrets for AI-written synthesis.")
+    elif result.get("error"):
+        st.warning("AI synthesis was temporarily unavailable; the evidence explanation is shown instead.")
     with st.container(border=True):
         st.markdown(result["text"])
     st.markdown("## Current evidence")
@@ -1535,11 +1814,18 @@ def _render_driver_detail(driver_id: str) -> None:
 
 
 def _render_holding_detail(holding_name: str) -> None:
-    if holding_name not in HOLDING_BRIEFING_DATA:
+    if holding_name not in {item["name"] for item in get_portfolio_holdings()}:
         st.error("The selected holding is not in the current portfolio.")
         return
-    config = HOLDING_BRIEFING_DATA[holding_name]
-    history = fetch_yahoo_history(config["ticker"])
+    config = get_holding_config(holding_name)
+    timeline_options = {
+        "1D": ("1d", "5m"), "5D": ("5d", "30m"), "1M": ("1mo", "1d"),
+        "6M": ("6mo", "1d"), "YTD": ("ytd", "1d"), "1Y": ("1y", "1d"),
+        "5Y": ("5y", "1wk"), "MAX": ("max", "1mo"),
+    }
+    timeline = st.radio("Chart period", list(timeline_options), index=1, horizontal=True, label_visibility="collapsed", key=f"jugg40_holding_timeline_{holding_name}")
+    range_period, interval = timeline_options[timeline]
+    history = fetch_yahoo_history(config["ticker"], range_period, interval)
     holding_news = fetch_holding_news_48h(holding_name)
     st.markdown(f'<div class="brief-tabs"><a class="brief-tab" href="?page=briefing&view=overview" target="_self">Overview</a><span class="brief-tab active">{html_lib.escape(holding_name)}</span></div>', unsafe_allow_html=True)
     st.markdown(f"# {holding_name}")
@@ -1551,9 +1837,10 @@ def _render_holding_detail(holding_name: str) -> None:
         with st.container(border=True):
             st.markdown('<div class="mb-section-title">Recent price movement</div>', unsafe_allow_html=True)
             if history.get("ok"):
-                st.plotly_chart(_holding_chart(holding_name, history), use_container_width=True, config={"displayModeBar": False}, key=f"holding_chart_{holding_name}")
+                st.plotly_chart(_holding_chart(holding_name, history), use_container_width=True, config={"displayModeBar": False, "scrollZoom": True}, key=f"holding_chart_{holding_name}_{timeline}")
                 change_class = "pos" if history.get("change_48h", 0) >= 0 else "neg"
                 st.markdown(f'<div class="briefing-meta"><span class="meta-pill">Price {_format_market_price({**history, "ticker": config["ticker"]})}</span><span class="meta-pill {change_class}">{history.get("change_48h", 0):+.2f}% over {html_lib.escape(history.get("basis", "available window"))}</span><span class="meta-pill">Daily {history.get("daily_change", 0):+.2f}%</span></div>', unsafe_allow_html=True)
+                st.caption("Drag to zoom, scroll to zoom and double-click to reset. The briefing always evaluates the previous 48 hours, regardless of the chart period.")
             else:
                 st.warning("The price chart could not be loaded. The briefing can still use the selected news evidence.")
     with control_col:
@@ -1585,8 +1872,10 @@ def _render_holding_summary(holding_name: str) -> None:
         return
     word_count = len(result["text"].split())
     st.markdown(f'<div class="briefing-meta"><span class="meta-pill">{html_lib.escape(result["length"])}</span><span class="meta-pill">{word_count} words</span><span class="meta-pill">Generated {html_lib.escape(result["created_at"])}</span><span class="meta-pill">{html_lib.escape(result["generated_by"])}</span></div>', unsafe_allow_html=True)
-    if result.get("error"):
-        st.info(f"AI service note: {result['error']} The page therefore shows the evidence-based fallback digest.")
+    if result.get("error") == "AI_NOT_CONFIGURED":
+        st.caption("Evidence mode · Add OPENAI_API_KEY in Streamlit Secrets to enable AI-written causal synthesis. The factual digest below remains fully usable.")
+    elif result.get("error"):
+        st.warning("AI synthesis was temporarily unavailable, so JUGG produced the evidence digest instead.")
     with st.container(border=True):
         st.markdown(result["text"])
     st.markdown("## Sources used")
@@ -1724,8 +2013,12 @@ def _render_indicator_detail(name: str) -> None:
     st.markdown('<div class="brief-tabs"><a class="brief-tab" href="?page=briefing&view=overview" target="_self">Overview</a><span class="brief-tab active">Indicator detail</span></div>', unsafe_allow_html=True)
     st.markdown(f"# {name}")
     st.caption(f"Market data source: Yahoo Finance · {item.get('exchange','source unavailable')} · {_market_period()[0]} to {_market_period()[1]}")
-    if item.get("ok"):
-        st.plotly_chart(_holding_chart(name, item), use_container_width=True, config={"displayModeBar": False}, key=f"indicator_chart_{item['ticker']}")
+    timeline_options = {"1D": ("1d", "5m"), "5D": ("5d", "30m"), "1M": ("1mo", "1d"), "6M": ("6mo", "1d"), "YTD": ("ytd", "1d"), "1Y": ("1y", "1d"), "5Y": ("5y", "1wk"), "MAX": ("max", "1mo")}
+    timeline = st.radio("Chart period", list(timeline_options), index=1, horizontal=True, label_visibility="collapsed", key=f"jugg40_indicator_timeline_{item['ticker']}")
+    detail_history = fetch_yahoo_history(item["ticker"], *timeline_options[timeline])
+    if detail_history.get("ok"):
+        st.plotly_chart(_holding_chart(name, detail_history), use_container_width=True, config={"displayModeBar": False, "scrollZoom": True}, key=f"indicator_chart_{item['ticker']}_{timeline}")
+        st.caption("Drag or scroll to zoom; double-click the chart to reset.")
     else:
         st.warning("Current data is unavailable. The app will not display an old value as live.")
     increase = item.get("up", "The effect depends on the surrounding market context.")
@@ -1750,7 +2043,7 @@ def _render_overview() -> None:
         drivers = build_driver_snapshot(market_news)
     st.session_state.update(market_snapshot=snapshot, market_news_48h=market_news, market_driver_snapshot=drivers)
     start, end = _market_period()
-    st.markdown(f"<div class='mb-topbar'><div><div class='mb-kicker'>JUGG 3.1 · MARKET INTELLIGENCE</div><h1>Market Briefing</h1><div class='mb-sub'>Previous 48 hours: {start} — {end}</div></div><div class='mb-status'>● {len(market_news)} selected news items</div></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='mb-topbar'><div><div class='mb-kicker'>JUGG 4.0 · MARKET INTELLIGENCE</div><h1>Market Briefing</h1><div class='mb-sub'>Previous 48 hours: {start} — {end}</div></div><div class='mb-status'>● {len(market_news)} selected news items</div></div>", unsafe_allow_html=True)
     st.caption("Market data: Yahoo Finance chart endpoint · refreshed up to every 15 minutes. News: publisher RSS links selected from the strict 48-hour window. Unavailable quotes are not replaced with stale values.")
     _render_regime_and_flow(snapshot)
     st.markdown("<div class='section-spacer'></div><div class='mb-section-title'>Market Indicators</div><div class='mb-section-note'>Price moves are interpreted by economic meaning, not coloured mechanically.</div>", unsafe_allow_html=True)
@@ -1758,10 +2051,10 @@ def _render_overview() -> None:
     st.markdown("<div class='section-spacer'></div>", unsafe_allow_html=True)
     with st.container(border=True):
         st.markdown(f"<div class='mb-section-title'>Generate Overall Market Briefing</div><div class='mb-section-note'>Exact period: {start} — {end}</div>", unsafe_allow_html=True)
-        with st.form("jugg31_overall_market_form", border=False):
+        with st.form("jugg40_overall_market_form", border=False):
             a, b = st.columns([1.35, 1])
-            with a: length_label = st.selectbox("Briefing length", list(BRIEFING_LENGTHS), index=1, key="jugg31_market_length")
-            with b: submitted = st.form_submit_button("✦ Generate Briefing", use_container_width=True, key="jugg31_market_submit")
+            with a: length_label = st.selectbox("Briefing length", list(BRIEFING_LENGTHS), index=1, key="jugg40_market_length")
+            with b: submitted = st.form_submit_button("✦ Generate Briefing", use_container_width=True, key="jugg40_market_submit")
         last = st.session_state.get("generated_market_briefing", {}).get("created_at", "Not generated in this session")
         st.caption(f"Last generated: {last}")
         if submitted:
@@ -1780,7 +2073,7 @@ def _render_overview() -> None:
 
 def render_market_briefing() -> None:
     _render_briefing_css()
-    st.markdown('<a class="back-link" href="?page=hub" target="_self">← Back to programs</a><style>.back-link{display:inline-flex;padding:9px 13px;border:1px solid rgba(255,255,255,.13);border-radius:11px;color:#eef1ff!important;text-decoration:none!important;background:rgba(255,255,255,.04);margin-bottom:8px}.back-link:hover{border-color:rgba(143,92,255,.5);background:rgba(143,92,255,.10)}</style>', unsafe_allow_html=True)
+    render_app_nav("Market Briefing")
     view = _query_value("view", "overview")
     if view == "market_summary":
         _render_market_summary()
@@ -1794,6 +2087,32 @@ def render_market_briefing() -> None:
         _render_holding_summary(_query_value("asset", "Siemens Healthineers"))
     else:
         _render_overview()
+
+
+def render_hub() -> None:
+    st.markdown("""
+    <div class="j40-shell">
+      <div class="j40-gridlines"></div><div class="j40-orbit orbit-a"></div><div class="j40-orbit orbit-b"></div>
+      <header class="j40-header"><div class="j40-brand"><span>J</span><b>JUGG</b><small>4.0</small></div><div class="j40-pulse"><i></i> Market workspace</div></header>
+      <section class="j40-hero"><div class="j40-eyebrow">YOUR FINANCIAL COMMAND CENTRE</div><h1>See the signal.<br><em>Understand the move.</em></h1><p>Four focused tools. One coherent view of your markets and portfolio.</p></section>
+      <nav class="j40-apps" aria-label="JUGG programs">
+        <a class="j40-card" href="?page=news" target="_self"><span class="j40-index">01</span><div class="j40-icon"><svg viewBox="0 0 56 56"><path d="M13 10h29v36H13zM20 19h15M20 26h15M20 33h10"></path></svg></div><h2>News Finder</h2><p>Find and rank company and sector news.</p><b>Open program <i>↗</i></b></a>
+        <a class="j40-card" href="?page=portfolio" target="_self"><span class="j40-index">02</span><div class="j40-icon"><svg viewBox="0 0 56 56"><path d="M10 44h38M15 39V27M25 39V17M35 39V23M45 39V11"></path></svg></div><h2>Portfolio</h2><p>Track value, allocation and market performance.</p><b>Open program <i>↗</i></b></a>
+        <a class="j40-card" href="?page=briefing&view=overview" target="_self"><span class="j40-index">03</span><div class="j40-icon"><svg viewBox="0 0 56 56"><path d="M9 39l11-12 9 7 11-17 8 6M9 46h39"></path><circle cx="20" cy="27" r="2"></circle><circle cx="40" cy="17" r="2"></circle></svg></div><h2>Market Briefing</h2><p>Explain risk, flows, drivers and your holdings.</p><b>Open program <i>↗</i></b></a>
+        <div class="j40-card j40-soon"><span class="j40-index">04</span><div class="j40-icon"><svg viewBox="0 0 56 56"><circle cx="28" cy="28" r="15"></circle><path d="M28 20v16M20 28h16"></path></svg></div><h2>Reserved</h2><p>The fourth workspace is ready for your next program.</p><b>Coming later</b></div>
+      </nav>
+      <footer class="j40-footer"><span>LIVE DATA LAYER</span><i></i><span>48H INTELLIGENCE</span><i></i><span>DARK & SLEEK SYSTEM</span></footer>
+    </div>
+    <style>
+    .main .block-container{max-width:1500px;padding:.75rem 1.15rem 1rem!important}.j40-shell{position:relative;min-height:calc(100vh - 4.2rem);overflow:hidden;padding:24px 32px 18px;border:1px solid rgba(132,153,255,.18);border-radius:25px;background:radial-gradient(circle at 50% -15%,rgba(112,65,235,.18),transparent 38%),linear-gradient(150deg,#091026 0%,#050918 62%,#071022 100%);box-shadow:0 35px 110px rgba(0,0,0,.48);display:flex;flex-direction:column}
+    .j40-gridlines{position:absolute;inset:0;background-image:linear-gradient(rgba(117,136,207,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(117,136,207,.045) 1px,transparent 1px);background-size:52px 52px;mask-image:linear-gradient(to bottom,black,transparent 86%);animation:j40-grid 16s linear infinite}.j40-header{position:relative;z-index:3;display:flex;align-items:center;justify-content:space-between}.j40-brand{display:flex;align-items:center;gap:10px;color:#f8f9ff}.j40-brand>span{width:32px;height:32px;display:grid;place-items:center;border-radius:10px;background:linear-gradient(145deg,#9661ff,#3151cf);font-weight:800;box-shadow:0 0 25px rgba(125,77,255,.42)}.j40-brand b{font-size:15px;letter-spacing:.04em}.j40-brand small{font-size:9px;color:#9b83e8;border:1px solid rgba(155,126,255,.3);border-radius:999px;padding:3px 6px}.j40-pulse{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#8290b5}.j40-pulse i{display:inline-block;width:6px;height:6px;border-radius:50%;background:#58db94;box-shadow:0 0 12px #58db94;margin-right:7px;animation:j40-pulse 2.2s ease-in-out infinite}
+    .j40-hero{position:relative;z-index:2;text-align:center;margin:34px auto 28px;animation:j40-rise .85s cubic-bezier(.16,1,.3,1) both}.j40-eyebrow{font-size:9px;letter-spacing:.22em;color:#8e7bd2;margin-bottom:12px}.j40-hero h1{margin:0!important;color:#f8f9ff!important;font-size:clamp(34px,4vw,55px)!important;line-height:1.01!important;letter-spacing:-.045em!important;font-weight:700!important}.j40-hero h1 em{font-style:normal;background:linear-gradient(90deg,#b5a1ff,#6db9ff);-webkit-background-clip:text;background-clip:text;color:transparent}.j40-hero p{margin:12px 0 0;color:#8f9abb;font-size:13px}
+    .j40-apps{position:relative;z-index:3;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;width:100%;max-width:1120px;margin:0 auto}.j40-card{position:relative;display:block;min-height:220px;padding:20px 19px 17px;border:1px solid rgba(132,153,255,.18);border-radius:17px;background:linear-gradient(150deg,rgba(20,30,61,.9),rgba(8,14,31,.96));text-decoration:none!important;overflow:hidden;transition:transform .32s cubic-bezier(.2,.8,.2,1),border-color .32s,box-shadow .32s;animation:j40-card .7s cubic-bezier(.16,1,.3,1) both}.j40-card:nth-child(2){animation-delay:.08s}.j40-card:nth-child(3){animation-delay:.16s}.j40-card:nth-child(4){animation-delay:.24s}.j40-card:before{content:"";position:absolute;inset:-100% -40%;background:linear-gradient(112deg,transparent 42%,rgba(255,255,255,.09) 50%,transparent 58%);transform:translateX(-60%) rotate(7deg);transition:.75s}.j40-card:hover{transform:translateY(-7px);border-color:rgba(143,92,255,.58);box-shadow:0 20px 48px rgba(49,35,137,.31)}.j40-card:hover:before{transform:translateX(60%) rotate(7deg)}.j40-index{position:absolute;right:16px;top:15px;color:#596783;font:600 10px/1 monospace;letter-spacing:.12em}.j40-icon{width:48px;height:48px;border:1px solid rgba(152,117,255,.35);border-radius:14px;display:grid;place-items:center;background:linear-gradient(145deg,rgba(112,69,236,.28),rgba(36,76,171,.22));box-shadow:0 0 28px rgba(113,71,240,.18)}.j40-icon svg{width:29px;fill:none;stroke:#ab91ff;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 6px rgba(122,84,255,.5))}.j40-card h2{margin:17px 0 7px!important;color:#f6f7ff!important;font-size:16px!important}.j40-card p{min-height:38px;margin:0;color:#94a0bf;font-size:11px;line-height:1.55}.j40-card>b{display:flex;align-items:center;justify-content:space-between;margin-top:17px;padding-top:12px;border-top:1px solid rgba(132,153,255,.1);color:#a990ff;font-size:10px;font-weight:600}.j40-card>b i{font-style:normal;font-size:15px}.j40-soon{opacity:.52}.j40-soon:hover{transform:none;border-color:rgba(132,153,255,.18);box-shadow:none}.j40-soon .j40-icon{filter:grayscale(.5)}
+    .j40-footer{position:relative;z-index:2;margin:auto auto 0;padding-top:22px;display:flex;align-items:center;justify-content:center;gap:12px;color:#5f6d8b;font-size:8px;letter-spacing:.15em}.j40-footer i{width:3px;height:3px;border-radius:50%;background:#765bd7}.j40-orbit{position:absolute;border:1px solid rgba(124,91,240,.12);border-radius:50%;pointer-events:none}.orbit-a{width:410px;height:410px;left:-220px;bottom:-250px;animation:j40-orbit 18s linear infinite}.orbit-b{width:520px;height:520px;right:-300px;top:-320px;animation:j40-orbit 24s linear infinite reverse}
+    @keyframes j40-rise{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}@keyframes j40-card{from{opacity:0;transform:translateY(24px) scale(.975)}to{opacity:1;transform:none}}@keyframes j40-pulse{50%{opacity:.35;box-shadow:0 0 4px #58db94}}@keyframes j40-grid{to{background-position:52px 52px}}@keyframes j40-orbit{to{transform:rotate(360deg)}}
+    @media(max-width:980px){.j40-shell{min-height:auto;padding:22px 22px 30px}.j40-apps{grid-template-columns:repeat(2,1fr)}.j40-footer{margin-top:24px}}@media(max-width:580px){.main .block-container{padding:.5rem!important}.j40-shell{padding:18px 13px 28px;border-radius:18px}.j40-apps{grid-template-columns:1fr}.j40-hero{margin:34px auto 25px}.j40-card{min-height:190px}.j40-footer{display:none}}
+    </style>
+    """, unsafe_allow_html=True)
 
 page = st.query_params.get("page", "hub")
 if isinstance(page, list):
