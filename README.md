@@ -1,116 +1,51 @@
-# JUGG Application Hub — Market Briefing Update
+# JUGG 3.1 — Market Briefing
 
-This version keeps the existing **News Finder** and **Portfolio** programs and adds a third active program: **Market Briefing**.
+JUGG 3.1 preserves the existing animated program hub, News Finder and Portfolio, and upgrades Market Briefing into a fast, plain-language 48-hour dashboard.
 
-## What was added
+## Included
 
-### Market Briefing overview
-
-- A large **Market Overview** chart comparing the recent normalized movement of the S&P 500, Euro Stoxx 50, Nikkei 225 and Hang Seng.
-- A green briefing-control area with:
-  - **Short — 100–200 words**
-  - **Medium — 200–350 words**
-  - **Long — 350–500 words**
-  - **Generate Briefing**
-- A routed in-app briefing tab opens after generation.
-
-### Market health grid
-
-The right side contains twelve live bellwethers and market proxies in a **3 × 4 desktop grid**:
-
-- S&P 500
-- Nasdaq 100
-- MSCI World ETF
-- Russell 2000
-- Euro Stoxx 50
-- DAX
-- Nikkei 225
-- Hang Seng
-- US 10-year yield
-- EUR/USD
-- Brent oil
-- Gold
-
-This includes exactly two dedicated European indices and two dedicated Asian indices.
-
-### Top Drivers
-
-The app selects current driver categories from timestamped news published in the preceding 48 hours. Clicking a driver opens an explanation covering:
-
-1. What it actually is
-2. What it means
-3. Which companies or markets may be affected and why
-
-### Holdings
-
-The five current holdings appear in one row on desktop. Additional holdings automatically wrap to the next row.
-
-Clicking a holding opens:
-
-- A recent price chart
-- The latest available 48-hour or recent-trading-point price change
-- The three briefing-length choices
-- A Generate Briefing action
-- A separate generated-briefing tab with the selected sources
-
-For **MS Europe 26/27 ABJ**, the chart uses the Euro Stoxx 50 only as a market proxy because the supplied project data does not include a public live ticker for the structured product. The app labels this explicitly and does not present the proxy as the product valuation.
-
-## News and attribution rules
-
-The briefing system:
-
-- Uses timestamped articles inside a strict 48-hour window
-- Deduplicates repeated stories
-- Scores company, sector, macro and source relevance
-- Separates company-specific evidence from broader market evidence
-- Instructs the AI to distinguish:
-  - Confirmed cause
-  - Likely contributor
-  - No clear explanation found
-- Displays the sources used beneath each briefing
-- Avoids padding a briefing with speculation when evidence is limited
-
-## AI configuration
-
-The app calls the OpenAI Responses API directly with `requests`, so no additional OpenAI Python package is required.
-
-Create `.streamlit/secrets.toml` locally or add the same values in **Streamlit Community Cloud → App settings → Secrets**:
-
-```toml
-OPENAI_API_KEY = "your-api-key"
-OPENAI_MODEL = "gpt-5-mini"
-```
-
-`OPENAI_MODEL` is optional. The code defaults to `gpt-5-mini` and lets you override the model without editing `app.py`.
-
-Do not commit the real `secrets.toml` file to GitHub. A safe template is included as `.streamlit/secrets.toml.example`.
-
-When no API key is configured, the program remains usable and shows a clearly labelled factual **evidence digest** instead of pretending that an AI briefing was generated.
+- Weighted **Market Regime** indicator: Risk-On, Risk-Off or Mixed / Neutral, with confidence and supporting signals.
+- **Where Is Money Moving?** estimated-positioning panel. This is inferred from market prices and is never described as measured fund flow.
+- Four groups of four clickable indicators: Equities, Safe Havens, Economic Drivers and Asia.
+- Context-aware interpretations (for example, a lower gas price is not treated mechanically as negative).
+- Clickable indicator detail views with charts, explanations, portfolio relevance and current sources.
+- Short, Medium and Long overall-market briefings stored in Streamlit session state.
+- Clickable Top Drivers with facts, interpretation and portfolio relevance.
+- Five responsive holding cards and individual holding detail/briefing views.
+- Clear proxy labelling for **MS Europe 26/27 ABJ**; the Euro Stoxx 50 reference is not presented as the product price.
+- Cached market/news calls, guarded external requests, loading states and readable errors.
 
 ## Run locally
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate       # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## Deploy on Streamlit Community Cloud
+## Optional AI configuration
 
-1. Upload the contents of this folder to the GitHub repository.
-2. Select `app.py` as the Streamlit entry point.
-3. Add `OPENAI_API_KEY` under the app's Secrets settings.
-4. Reboot the app after changing secrets.
+The price dashboard, regime, positioning estimate, navigation, RSS news and evidence-based fallback briefings work without an AI key. For AI-written briefings, copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml` and add:
 
-## Existing programs retained
+```toml
+OPENAI_API_KEY = "your-key"
+OPENAI_MODEL = "gpt-5-mini"
+```
 
-- Animated JUGG program-selection hub
-- News Finder with company and sector RSS search
-- Dark & Sleek Portfolio page
-- Yahoo Finance quote loading with caching and saved-value fallbacks
+The same values can be added in Streamlit Community Cloud under **App settings → Secrets**. Never commit the real secrets file. `OPENAI_MODEL` is optional.
 
-## Important limitations
+## Data and reliability limitations
 
-- Market prices and RSS feeds can occasionally be delayed or unavailable.
-- News snippets may not contain every detail of a full article.
-- A price move can have several causes; the app is deliberately instructed not to claim certainty without evidence.
-- The current portfolio data does not contain unit quantities, so the existing Portfolio page retains its previous saved-value methodology.
+- Market charts use the public Yahoo Finance chart endpoint. Quotes may be delayed, exchange calendars differ, and the endpoint provides market prices—not institutional-grade real-time data.
+- The 48-hour change uses available trading points within the period. If markets were closed, the app labels the basis as the latest available trading points.
+- European TTF data availability depends on the public symbol. If unavailable, the card says so and no stale value is shown as live.
+- News comes from Google News and Yahoo RSS links, is deduplicated, time-filtered and ranked. RSS snippets may omit important context.
+- Price-based positioning is an estimate, not actual ETF or mutual-fund flow data. A paid flow provider would be required for measured flows.
+- Market regime, drivers and causal explanations are indicators or interpretations, not guaranteed conclusions. The AI prompt distinguishes confirmed drivers, likely contributors, possible background factors and cases with no clear explanation.
+- **MS Europe 26/27 ABJ** has no public live product ticker in the supplied project. Its Euro Stoxx 50 chart is explicitly a market-exposure reference only.
+- AI calls require a valid OpenAI API key and may incur provider costs. Without one, the app produces a labelled evidence digest.
+
+## Deployment
+
+Upload the folder contents to GitHub, select `app.py` as the Streamlit entry point, add optional secrets in the hosting settings, and deploy. Python dependencies are listed in `requirements.txt`.

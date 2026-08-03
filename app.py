@@ -5,7 +5,7 @@ import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote_plus, urlparse
 
 import feedparser
@@ -16,7 +16,7 @@ from streamlit.components.v1 import html as components_html
 
 
 st.set_page_config(
-    page_title="JUGG",
+    page_title="JUGG 3.1",
     page_icon="📰",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -493,18 +493,18 @@ def render_news_finder():
 
     with st.sidebar:
         st.header("News Finder controls")
-        view_mode = st.radio("View mode", ["One selected company", "Full portfolio"])
-        selected_company = st.selectbox("Company", list(COMPANIES))
-        source_mode = st.selectbox("Source quality mode", list(SOURCE_MAPS), index=1)
-        strict_sources = st.toggle("Only show selected trusted sources", value=False)
-        top_n = st.slider("Articles per section", 3, 12, 5)
-        recency_label = st.selectbox("Recency window", list(RECENCY_OPTIONS), index=1)
-        order_label = st.selectbox("Article order", list(ORDER_OPTIONS))
-        include_yahoo_finance = st.toggle("Use Yahoo Finance company feed", value=True)
-        use_extra_queries = st.toggle("Use extra RSS queries", value=True)
-        show_debug = st.toggle("Show debug details", value=False)
-        load_clicked = st.button("Load Articles", type="primary", use_container_width=True)
-        if st.button("Clear saved results / cache", use_container_width=True):
+        view_mode = st.radio("View mode", ["One selected company", "Full portfolio"], key="news_view_mode")
+        selected_company = st.selectbox("Company", list(COMPANIES), key="news_company")
+        source_mode = st.selectbox("Source quality mode", list(SOURCE_MAPS), index=1, key="news_source_mode")
+        strict_sources = st.toggle("Only show selected trusted sources", value=False, key="news_strict_sources")
+        top_n = st.slider("Articles per section", 3, 12, 5, key="news_top_n")
+        recency_label = st.selectbox("Recency window", list(RECENCY_OPTIONS), index=1, key="news_recency")
+        order_label = st.selectbox("Article order", list(ORDER_OPTIONS), key="news_order")
+        include_yahoo_finance = st.toggle("Use Yahoo Finance company feed", value=True, key="news_yahoo")
+        use_extra_queries = st.toggle("Use extra RSS queries", value=True, key="news_extra_queries")
+        show_debug = st.toggle("Show debug details", value=False, key="news_debug")
+        load_clicked = st.button("Load Articles", type="primary", use_container_width=True, key="news_load")
+        if st.button("Clear saved results / cache", use_container_width=True, key="news_clear"):
             st.cache_data.clear()
             st.session_state.pop("rss_news_results", None)
             st.session_state.pop("rss_news_settings", None)
@@ -697,7 +697,7 @@ def render_portfolio():
     ))
     fig.update_geos(showframe=False, showcoastlines=False, showcountries=True, countrycolor="#26304b", showland=True, landcolor="#151d33", showocean=True, oceancolor="#091126", bgcolor="rgba(0,0,0,0)", projection_type="natural earth")
     fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", height=245)
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key="portfolio_country_chart")
 
     st.markdown(f"""
     <div class="country-list">{country_rows}</div></section>
@@ -729,18 +729,22 @@ BRIEFING_LENGTHS = {
 }
 
 MARKET_ASSETS = [
-    {"name": "S&P 500", "ticker": "^GSPC", "region": "United States", "role": "Large-cap US market"},
-    {"name": "Nasdaq 100", "ticker": "^NDX", "region": "United States", "role": "Growth and technology"},
-    {"name": "MSCI World ETF", "ticker": "URTH", "region": "Global", "role": "Developed-market proxy"},
-    {"name": "Russell 2000", "ticker": "^RUT", "region": "United States", "role": "Smaller-company health"},
-    {"name": "Euro Stoxx 50", "ticker": "^STOXX50E", "region": "Europe", "role": "European blue chips"},
-    {"name": "DAX", "ticker": "^GDAXI", "region": "Europe", "role": "German market bellwether"},
-    {"name": "Nikkei 225", "ticker": "^N225", "region": "Asia", "role": "Japanese equities"},
-    {"name": "Hang Seng", "ticker": "^HSI", "region": "Asia", "role": "Hong Kong / China proxy"},
-    {"name": "US 10Y Yield", "ticker": "^TNX", "region": "Rates", "role": "Global valuation benchmark"},
-    {"name": "EUR / USD", "ticker": "EURUSD=X", "region": "FX", "role": "Dollar and euro conditions"},
-    {"name": "Brent Oil", "ticker": "BZ=F", "region": "Commodities", "role": "Energy and inflation signal"},
-    {"name": "Gold", "ticker": "GC=F", "region": "Commodities", "role": "Inflation and safe-haven signal"},
+    {"name":"S&P 500","ticker":"^GSPC","category":"Equities","role":"Broad US shares","up":"Broad US risk appetite is improving.","down":"Investors are reducing exposure to large US shares."},
+    {"name":"Nasdaq-100","ticker":"^NDX","category":"Equities","role":"Technology and growth shares","up":"Technology and growth shares are leading.","down":"Investors are becoming less willing to pay for growth."},
+    {"name":"Euro Stoxx 50","ticker":"^STOXX50E","category":"Equities","role":"Large euro-area companies","up":"Large euro-area companies are attracting buying.","down":"Large euro-area companies are under pressure."},
+    {"name":"MSCI Emerging Markets ETF","ticker":"EEM","category":"Equities","role":"Emerging-market share proxy","up":"Emerging-market risk appetite is improving.","down":"Investors are reducing emerging-market exposure."},
+    {"name":"Gold","ticker":"GC=F","category":"Safe Havens","role":"Perceived financial safety","up":"Safe-haven demand is increasing.","down":"Demand for gold as protection is easing."},
+    {"name":"US 10-Year Treasury yield","ticker":"^TNX","category":"Safe Havens","role":"Long-term US interest-rate benchmark","up":"Long-term borrowing costs are rising, which can pressure growth shares.","down":"Markets expect lower rates or weaker growth; bonds are attracting demand.","unit":"yield"},
+    {"name":"Japanese yen","ticker":"JPY=X","category":"Safe Havens","role":"Yen strength versus US dollar","up":"Yen weakening: defensive currency demand is easing.","down":"Yen strengthening: investors may be becoming more cautious.","invert":True},
+    {"name":"Swiss franc","ticker":"CHF=X","category":"Safe Havens","role":"Franc strength versus US dollar","up":"Swiss franc weakening: demand for currency safety is easing.","down":"Swiss franc strengthening: defensive demand is increasing.","invert":True},
+    {"name":"Brent oil","ticker":"BZ=F","category":"Economic Drivers","role":"Energy and inflation pressure","up":"Oil is adding to energy costs and inflation pressure.","down":"Lower oil may ease inflation, but can also signal weaker demand."},
+    {"name":"European natural gas / TTF","ticker":"TTF=F","category":"Economic Drivers","role":"European energy-cost reference","up":"European gas costs are increasing.","down":"Lower gas prices may help European consumers and industry."},
+    {"name":"Copper","ticker":"HG=F","category":"Economic Drivers","role":"Industrial-demand signal","up":"Copper suggests firmer industrial demand.","down":"Copper points to softer industrial-demand expectations."},
+    {"name":"EUR/USD","ticker":"EURUSD=X","category":"Economic Drivers","role":"Euro strength versus US dollar","up":"Euro strengthening: imports get cheaper, while exporters face a currency headwind.","down":"Euro weakening: exporters may benefit, but imports become more expensive."},
+    {"name":"Hang Seng","ticker":"^HSI","category":"Asia","role":"Hong Kong-listed China exposure","up":"Hong Kong and China-linked shares are attracting buying.","down":"Investors are reducing Hong Kong and China-linked exposure."},
+    {"name":"CSI 300","ticker":"000300.SS","category":"Asia","role":"Large mainland Chinese shares","up":"Mainland Chinese blue chips are strengthening.","down":"Mainland Chinese blue chips are weakening."},
+    {"name":"Nikkei 225","ticker":"^N225","category":"Asia","role":"Large Japanese shares","up":"Japanese equities are attracting buying.","down":"Japanese equities are losing momentum."},
+    {"name":"Chinese yuan","ticker":"CNY=X","category":"Asia","role":"Yuan strength versus US dollar","up":"Yuan weakening: Chinese confidence may be under pressure, while exporters gain support.","down":"Yuan strengthening: confidence in Chinese assets may be improving.","invert":True},
 ]
 
 MARKET_NEWS_QUERIES = [
@@ -1299,11 +1303,12 @@ SELECTED HOLDING, SECTOR AND BROADER MARKET NEWS, LAST 48 HOURS:
 def generate_driver_detail(driver: dict) -> dict:
     definition = DRIVER_DEFINITIONS[driver["id"]]
     prompt = f"""
-Explain the current market driver '{driver['title']}' using only the supplied 48-hour evidence. Use three short sections with these exact headings:
+Explain the current market driver '{driver['title']}' using only the supplied 48-hour evidence. Use four short sections with these exact headings:
 
 What it actually is
 What this means
 Who may be affected and why
+Relevance to my portfolio
 
 Use easy-to-understand but informative English. Distinguish general educational explanation from what the current articles actually report. Do not invent causal links. Keep the full answer between 180 and 320 words and use source markers [1], [2], etc. for current claims.
 
@@ -1311,6 +1316,7 @@ GENERAL DEFINITION:
 What it is: {definition['what']}
 Meaning: {definition['meaning']}
 Typical effects: {definition['effects']}
+Portfolio: MS Europe 26/27 ABJ, ANTA Sports Products, Siemens Healthineers, Tomra Systems and Verbund. Explain only plausible links and label interpretation as interpretation.
 
 CURRENT 48-HOUR EVIDENCE:
 {_article_evidence_text(driver.get('articles', []), 8)}
@@ -1326,6 +1332,7 @@ CURRENT 48-HOUR EVIDENCE:
             f"### What it actually is\n{definition['what']}{current}\n\n"
             f"### What this means\n{definition['meaning']}\n\n"
             f"### Who may be affected and why\n{definition['effects']}"
+            f"\n\n### Relevance to my portfolio\nThis driver may affect the five holdings through regional demand, interest rates, currencies, energy prices or sector valuation. The exact link depends on the holding and is an interpretation unless a current source explicitly confirms it."
         )
     return {"text": text, "error": error, "generated_by": "OpenAI" if not error and _safe_secret("OPENAI_API_KEY") else "Educational fallback", "articles": driver.get("articles", []), "created_at": datetime.now().astimezone().strftime("%d %b %Y, %H:%M")}
 
@@ -1347,8 +1354,9 @@ def _render_briefing_css() -> None:
     .briefing-copy{font-size:15px;line-height:1.72;color:#e8ebf6}.briefing-meta{display:flex;gap:10px;flex-wrap:wrap;margin:11px 0 18px}.meta-pill{font-size:10px;color:#aab4d2;border:1px solid rgba(133,151,255,.17);border-radius:999px;padding:6px 9px;background:rgba(255,255,255,.025)}
     .source-list{display:grid;gap:8px}.source-row{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;padding:10px 12px;border-top:1px solid rgba(133,151,255,.11);color:#dfe4f4}.source-number{color:#9b7eff;font-size:11px}.source-row a{color:#eef1ff!important;text-decoration:none!important;font-size:12px}.source-row a:hover{color:#ac91ff!important}.source-meta{font-size:10px;color:#7f8baa}
     .proxy-note{margin:10px 0;padding:11px 13px;border-radius:11px;border:1px solid rgba(246,200,95,.25);background:rgba(246,200,95,.06);color:#e7d9aa;font-size:11px;line-height:1.5}
-    @media(max-width:1120px){.proxy-grid{grid-template-columns:repeat(3,1fr)}.driver-grid{grid-template-columns:repeat(3,1fr)}.holding-card-grid{grid-template-columns:repeat(3,1fr)}}
-    @media(max-width:760px){.main .block-container{padding:1rem .75rem 4rem!important}.mb-topbar{display:block}.mb-status{display:inline-block;margin-top:10px}.proxy-grid{grid-template-columns:repeat(2,1fr)}.driver-grid{grid-template-columns:1fr}.holding-card-grid{grid-template-columns:1fr}.source-row{grid-template-columns:24px 1fr}.source-meta{grid-column:2}.briefing-copy{font-size:14px}}
+    .section-spacer{height:18px}.estimate-pill{font-size:8px;letter-spacing:.1em;color:#bfaeff;border:1px solid rgba(155,126,255,.35);border-radius:999px;padding:4px 7px;vertical-align:middle}.regime-name{font-size:28px;font-weight:750;color:#fff;margin:9px 0}.regime-name span{display:block;font-size:12px;color:#b3bdd8;margin-top:4px}.plain-copy{color:#dce1f0;font-size:13px;line-height:1.55}.signal-pill{display:inline-flex;margin:4px 5px 0 0;padding:6px 8px;border-radius:999px;background:rgba(143,92,255,.1);border:1px solid rgba(143,92,255,.24);color:#d8cffd;font-size:10px}.flow-row{display:grid;grid-template-columns:minmax(150px,1fr) minmax(100px,.8fr) 110px;gap:12px;align-items:center;padding:7px 0;border-bottom:1px solid rgba(133,151,255,.08);color:#e9ecf8;font-size:11px}.flow-row small{display:block;color:#8f9abb;margin-top:2px}.flow-track{height:6px;background:rgba(255,255,255,.07);border-radius:99px;overflow:hidden}.flow-track i{display:block;height:100%;border-radius:99px}.flow-in{background:#52d78c}.flow-out{background:#ff7186}.flow-flat{background:#d2aa58}.category-heading{margin:18px 0 8px}.category-heading b{color:#f5f7ff;font-size:15px}.category-heading small{display:block;color:#8f9abb;font-size:11px;margin-top:3px}.indicator-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px}.indicator-card{display:block;min-height:178px;padding:14px;border:1px solid rgba(133,151,255,.17);border-radius:14px;background:linear-gradient(145deg,rgba(17,26,53,.97),rgba(8,15,32,.99));text-decoration:none!important;transition:.2s}.indicator-card:hover{transform:translateY(-3px);border-color:rgba(143,92,255,.62)}.indicator-card.status-good{border-top-color:rgba(76,223,136,.55)}.indicator-card.status-bad{border-top-color:rgba(255,104,126,.55)}.indicator-card.status-neutral{border-top-color:rgba(210,170,88,.55)}.indicator-top{display:flex;justify-content:space-between;gap:8px}.indicator-top b{color:#f5f7ff;font-size:12px}.indicator-top span{color:#cbd3e9;font-size:10px}.indicator-value{font-size:17px;font-weight:700;color:#fff;margin-top:8px}.indicator-card p{color:#aeb8d1;font-size:10px;line-height:1.45;min-height:29px;margin:5px 0}.indicator-card small{color:#a78aff;font-size:9px}
+    @media(max-width:1120px){.proxy-grid,.indicator-grid{grid-template-columns:repeat(2,1fr)}.driver-grid{grid-template-columns:repeat(3,1fr)}.holding-card-grid{grid-template-columns:repeat(3,1fr)}}
+    @media(max-width:760px){.main .block-container{padding:1rem .75rem 4rem!important}.mb-topbar{display:block}.mb-status{display:inline-block;margin-top:10px}.proxy-grid,.indicator-grid{grid-template-columns:1fr}.driver-grid{grid-template-columns:1fr}.holding-card-grid{grid-template-columns:1fr}.flow-row{grid-template-columns:1fr}.source-row{grid-template-columns:24px 1fr}.source-meta{grid-column:2}.briefing-copy{font-size:14px}}
     </style>
     """, unsafe_allow_html=True)
 
@@ -1413,6 +1421,14 @@ def _render_holding_cards() -> None:
         initials = html_lib.escape(holding.get("abbr", name[:3]))
         label = html_lib.escape(config.get("chart_label", name))
         price = _format_market_price({**history, "ticker": config["ticker"]}) if history.get("ok") else "Unavailable"
+        driver = "Broad market and valuation"
+        explanation = "The latest move is assessed against company news, sector conditions and the wider market."
+        confidence = "Medium" if history.get("ok") else "Low"
+        if name == "ANTA Sports": driver, explanation = "China demand and yuan", "Chinese consumer confidence, regional shares and the yuan can influence ANTA's outlook."
+        elif name == "Siemens Healthineers": driver, explanation = "Healthcare demand and rates", "Hospital spending, sector sentiment and interest rates can affect the shares."
+        elif name == "Tomra Systems": driver, explanation = "Industrial growth and regulation", "Demand, recycling rules and growth-stock valuation are the main channels checked."
+        elif name == "Verbund": driver, explanation = "Power markets and interest rates", "Electricity, gas, hydrology and bond yields can change earnings and valuation expectations."
+        elif name == "MS Europe 26/27 ABJ": driver, explanation, confidence = "European market exposure", "The displayed move is only a market-exposure reference, not the product's live value.", "Low"
         cards.append(f"""
         <a class="holding-brief-card" href="?page=briefing&view=holding&asset={quote_plus(name)}" target="_self">
           <div class="holding-avatar">{initials[:8]}</div>
@@ -1420,6 +1436,9 @@ def _render_holding_cards() -> None:
           <div class="holding-card-price">{label}: {html_lib.escape(price)}</div>
           {_sparkline_svg(values[-30:], width=180, height=47)}
           <div class="holding-impact"><span>48h / latest points</span><b class="{change_class}">{change:+.2f}%</b></div>
+          <div class="holding-impact"><span>Main driver</span><b>{html_lib.escape(driver)}</b></div>
+          <div class="holding-card-price">{html_lib.escape(explanation)}</div>
+          <div class="holding-impact"><span>Confidence</span><b>{confidence}</b></div>
           <div class="holding-impact"><span>Open price chart & briefing</span><span>→</span></div>
         </a>""")
     st.markdown(f'<div class="holding-card-grid">{"".join(cards)}</div>', unsafe_allow_html=True)
@@ -1442,13 +1461,13 @@ def _render_overview() -> None:
     with left:
         with st.container(border=True):
             st.markdown('<div class="mb-section-title">Market Overview</div><div class="mb-section-note">Normalized movement of major US, European and Asian indices.</div>', unsafe_allow_html=True)
-            st.plotly_chart(_market_overview_chart(snapshot), use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(_market_overview_chart(snapshot), use_container_width=True, config={"displayModeBar": False}, key="legacy_market_chart")
             with st.form("overall_market_briefing_form", border=True):
                 form_left, form_right = st.columns([1.05, .95])
                 with form_left:
                     length_label = st.selectbox("Briefing length", list(BRIEFING_LENGTHS), index=1, key="market_briefing_length")
                 with form_right:
-                    submitted = st.form_submit_button("✦ Generate Briefing", use_container_width=True)
+                    submitted = st.form_submit_button("✦ Generate Briefing", use_container_width=True, key="legacy_market_submit")
             if submitted:
                 with st.spinner("Selecting evidence and writing the market briefing…"):
                     st.session_state["generated_market_briefing"] = generate_market_briefing(snapshot, market_news, length_label)
@@ -1476,7 +1495,7 @@ def _render_market_summary() -> None:
     st.markdown("# Overall Market Briefing")
     if not result:
         st.warning("No market briefing has been generated in this session.")
-        if st.button("Return to Market Overview"):
+        if st.button("Return to Market Overview", key="market_summary_return"):
             _navigate_briefing("overview")
         return
     word_count = len(result["text"].split())
@@ -1521,6 +1540,7 @@ def _render_holding_detail(holding_name: str) -> None:
         return
     config = HOLDING_BRIEFING_DATA[holding_name]
     history = fetch_yahoo_history(config["ticker"])
+    holding_news = fetch_holding_news_48h(holding_name)
     st.markdown(f'<div class="brief-tabs"><a class="brief-tab" href="?page=briefing&view=overview" target="_self">Overview</a><span class="brief-tab active">{html_lib.escape(holding_name)}</span></div>', unsafe_allow_html=True)
     st.markdown(f"# {holding_name}")
     st.caption("Price chart and 48-hour holding briefing")
@@ -1531,7 +1551,7 @@ def _render_holding_detail(holding_name: str) -> None:
         with st.container(border=True):
             st.markdown('<div class="mb-section-title">Recent price movement</div>', unsafe_allow_html=True)
             if history.get("ok"):
-                st.plotly_chart(_holding_chart(holding_name, history), use_container_width=True, config={"displayModeBar": False})
+                st.plotly_chart(_holding_chart(holding_name, history), use_container_width=True, config={"displayModeBar": False}, key=f"holding_chart_{holding_name}")
                 change_class = "pos" if history.get("change_48h", 0) >= 0 else "neg"
                 st.markdown(f'<div class="briefing-meta"><span class="meta-pill">Price {_format_market_price({**history, "ticker": config["ticker"]})}</span><span class="meta-pill {change_class}">{history.get("change_48h", 0):+.2f}% over {html_lib.escape(history.get("basis", "available window"))}</span><span class="meta-pill">Daily {history.get("daily_change", 0):+.2f}%</span></div>', unsafe_allow_html=True)
             else:
@@ -1541,14 +1561,19 @@ def _render_holding_detail(holding_name: str) -> None:
             st.markdown('<div class="mb-section-title">Generate holding briefing</div><div class="mb-section-note">Company, sector and market evidence from the last 48 hours.</div>', unsafe_allow_html=True)
             with st.form(f"holding_form_{holding_name}", border=True):
                 length_label = st.selectbox("Briefing length", list(BRIEFING_LENGTHS), index=1, key=f"holding_length_{holding_name}")
-                submitted = st.form_submit_button("✦ Generate Briefing", use_container_width=True)
+                submitted = st.form_submit_button("✦ Generate Briefing", use_container_width=True, key=f"holding_submit_{holding_name}")
             if submitted:
                 with st.spinner(f"Selecting news and explaining {holding_name}'s move…"):
-                    holding_news = fetch_holding_news_48h(holding_name)
                     market_news = st.session_state.get("market_news_48h") or fetch_market_news_48h()
                     result = generate_holding_briefing(holding_name, history, holding_news, market_news, length_label)
                     st.session_state[f"generated_holding_briefing_{holding_name}"] = result
                 _navigate_briefing("holding_summary", asset=holding_name)
+    st.markdown("## Company and sector news · previous 48 hours")
+    direct_terms = config.get("direct_terms", [])
+    direct_news = [a for a in holding_news if any(term in article_blob(a) for term in direct_terms)]
+    if not direct_news:
+        st.info("No meaningful company-specific news was found in the selected 48-hour sources. Sector and broader-market evidence will still be checked when a briefing is generated.")
+    _render_source_list(holding_news[:10])
 
 
 def _render_holding_summary(holding_name: str) -> None:
@@ -1568,12 +1593,199 @@ def _render_holding_summary(holding_name: str) -> None:
     _render_source_list(result.get("articles", []))
 
 
+# JUGG 3.1 dashboard logic -------------------------------------------------
+def _market_period() -> tuple[str, str]:
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(hours=48)
+    return start.strftime("%d %b %Y, %H:%M UTC"), end.strftime("%d %b %Y, %H:%M UTC")
+
+
+def _item(snapshot: list[dict], name: str) -> dict:
+    return next((row for row in snapshot if row.get("name") == name), {})
+
+
+def _signal_change(item: dict) -> float:
+    change = float(item.get("change_48h", 0.0)) if item.get("ok") else 0.0
+    return -change if item.get("invert") else change
+
+
+def calculate_market_regime(snapshot: list[dict]) -> dict:
+    # Positive score means risk-taking; weights prevent one market from deciding the result.
+    rules = [
+        ("S&P 500", .16, 1), ("Nasdaq-100", .12, 1), ("Euro Stoxx 50", .10, 1),
+        ("MSCI Emerging Markets ETF", .10, 1), ("Gold", .12, -1),
+        ("US 10-Year Treasury yield", .10, 1), ("Japanese yen", .08, -1),
+        ("Swiss franc", .07, -1), ("Copper", .07, 1), ("Brent oil", .03, 1),
+        ("Hang Seng", .03, 1), ("Chinese yuan", .02, 1),
+    ]
+    scored, signals = 0.0, []
+    for name, weight, direction in rules:
+        row = _item(snapshot, name)
+        if not row.get("ok"):
+            continue
+        move = max(-2.0, min(2.0, _signal_change(row))) / 2.0
+        contribution = move * weight * direction
+        scored += contribution
+        signals.append((abs(contribution), name, _signal_change(row), direction))
+    if scored >= .12:
+        label = "Risk-On"
+        explanation = "Investors appear more willing to take risk. Shares and economically sensitive assets are generally receiving support, while demand for perceived safety is less dominant. This is a weighted indicator, not a prediction or guaranteed conclusion."
+    elif scored <= -.12:
+        label = "Risk-Off"
+        explanation = "Investors appear more cautious. Defensive assets and currencies are gaining relative support while shares or economically sensitive markets are weaker. This is a weighted indicator, not a prediction or guaranteed conclusion."
+    else:
+        label = "Mixed / Neutral"
+        explanation = "Markets are sending conflicting signals. Some areas show confidence while others point to caution, so there is no broad, convincing move toward either risk or safety. This is a weighted indicator, not a prediction or guaranteed conclusion."
+    confidence = min(92, max(52, round(52 + abs(scored) * 145)))
+    supporting = []
+    for _, name, move, direction in sorted(signals, reverse=True)[:5]:
+        if name in ("Japanese yen", "Swiss franc", "Chinese yuan"):
+            supporting.append(f"{name} {'strengthening' if move > 0 else 'weakening'}")
+        elif name == "US 10-Year Treasury yield":
+            supporting.append(f"US 10-year yield {'rising' if move > 0 else 'falling'}")
+        else:
+            supporting.append(f"{name} {'rising' if move > 0 else 'falling'}")
+    return {"label": label, "confidence": confidence, "explanation": explanation, "signals": supporting, "score": scored}
+
+
+def calculate_money_flow(snapshot: list[dict]) -> list[dict]:
+    groups = {
+        "Equities": ["S&P 500", "Nasdaq-100", "Euro Stoxx 50", "MSCI Emerging Markets ETF"],
+        "Bonds": ["US 10-Year Treasury yield"], "Gold": ["Gold"],
+        "US dollar": ["EUR/USD", "Japanese yen", "Swiss franc"], "Oil": ["Brent oil"],
+        "China": ["Hang Seng", "CSI 300", "Chinese yuan"], "Europe": ["Euro Stoxx 50", "EUR/USD"],
+    }
+    output = []
+    for group, names in groups.items():
+        values = [_signal_change(_item(snapshot, n)) for n in names if _item(snapshot, n).get("ok")]
+        score = sum(values) / len(values) if values else 0.0
+        if group == "Bonds": score *= -1  # falling yields normally imply bond buying
+        if group == "US dollar": score *= -1  # weaker counterparts imply a stronger dollar
+        level = "Strong inflow" if score >= 1.2 else "Moderate inflow" if score >= .3 else "Strong outflow" if score <= -1.2 else "Moderate outflow" if score <= -.3 else "Neutral"
+        verb = "moving into" if "inflow" in level else "moving out of" if "outflow" in level else "balanced in"
+        output.append({"name": group, "score": score, "level": level, "text": f"Estimated positioning appears {verb} {group.lower()}."})
+    return output
+
+
+def _indicator_interpretation(item: dict) -> str:
+    if not item.get("ok"):
+        return "Current market data is unavailable; no direction is inferred."
+    return item.get("up") if float(item.get("change_48h", 0)) >= 0 else item.get("down")
+
+
+def _render_regime_and_flow(snapshot: list[dict]) -> None:
+    regime = calculate_market_regime(snapshot)
+    flows = calculate_money_flow(snapshot)
+    left, right = st.columns([1, 1.35], gap="medium")
+    with left:
+        with st.container(border=True):
+            st.markdown(f"<div class='mb-section-title'>Market Regime <span class='estimate-pill'>INDICATOR</span></div><div class='regime-name'>{regime['label']} <span>Confidence {regime['confidence']}%</span></div><p class='plain-copy'>{regime['explanation']}</p>", unsafe_allow_html=True)
+            st.markdown("".join(f"<span class='signal-pill'>{html_lib.escape(s)}</span>" for s in regime["signals"]), unsafe_allow_html=True)
+    with right:
+        with st.container(border=True):
+            st.markdown("<div class='mb-section-title'>Where Is Money Moving?</div><div class='mb-section-note'>Estimated market positioning inferred from prices — not measured fund flows.</div>", unsafe_allow_html=True)
+            rows = []
+            for flow in flows:
+                width = min(100, 20 + abs(flow['score']) * 35)
+                cls = "flow-in" if "inflow" in flow['level'] else "flow-out" if "outflow" in flow['level'] else "flow-flat"
+                rows.append(f"<div class='flow-row'><div><b>{flow['name']}</b><small>{flow['text']}</small></div><div class='flow-track'><i class='{cls}' style='width:{width:.0f}%'></i></div><span>{flow['level']}</span></div>")
+            st.markdown("".join(rows), unsafe_allow_html=True)
+
+
+def _render_market_cards(snapshot: list[dict]) -> None:
+    purposes = {
+        "Equities":"Shows whether investors are buying shares and which regions or styles are leading.",
+        "Safe Havens":"Shows whether investors are becoming more cautious and moving toward perceived safety.",
+        "Economic Drivers":"Shows inflation pressure, industrial demand, European energy conditions and currency effects.",
+        "Asia":"Shows China, Hong Kong and Japan — especially relevant for ANTA Sports and global growth.",
+    }
+    for category in purposes:
+        st.markdown(f"<div class='category-heading'><div><b>{category}</b><small>{purposes[category]}</small></div></div>", unsafe_allow_html=True)
+        cards = []
+        for item in [x for x in snapshot if x.get("category") == category]:
+            values = [value for _, value in (item.get("recent_points") or item.get("points", []))]
+            change = float(item.get("change_48h", 0)) if item.get("ok") else 0.0
+            if item.get("unit") == "yield" and item.get("ok"):
+                change_text = f"{(float(item.get('price',0))-float((item.get('recent_points') or [(0,item.get('price',0))])[0][1]))*10:+.0f} bp"
+            else:
+                change_text = f"{change:+.2f}%" if item.get("ok") else "Unavailable"
+            semantic = _signal_change(item)
+            cls = "status-good" if semantic > .15 else "status-bad" if semantic < -.15 else "status-neutral"
+            cards.append(f"<a class='indicator-card {cls}' href='?page=briefing&view=indicator&indicator={quote_plus(item['name'])}' target='_self'><div class='indicator-top'><b>{html_lib.escape(item['name'])}</b><span>{change_text}</span></div><div class='indicator-value'>{html_lib.escape(_format_market_price(item))}</div>{_sparkline_svg(values[-30:])}<p>{html_lib.escape(_indicator_interpretation(item))}</p><small>Open detailed view →</small></a>")
+        st.markdown(f"<div class='indicator-grid'>{''.join(cards)}</div>", unsafe_allow_html=True)
+
+
+def _render_indicator_detail(name: str) -> None:
+    snapshot = st.session_state.get("market_snapshot") or load_market_snapshot()
+    item = _item(snapshot, name)
+    if not item:
+        st.error("This market indicator could not be found.")
+        return
+    st.markdown('<div class="brief-tabs"><a class="brief-tab" href="?page=briefing&view=overview" target="_self">Overview</a><span class="brief-tab active">Indicator detail</span></div>', unsafe_allow_html=True)
+    st.markdown(f"# {name}")
+    st.caption(f"Market data source: Yahoo Finance · {item.get('exchange','source unavailable')} · {_market_period()[0]} to {_market_period()[1]}")
+    if item.get("ok"):
+        st.plotly_chart(_holding_chart(name, item), use_container_width=True, config={"displayModeBar": False}, key=f"indicator_chart_{item['ticker']}")
+    else:
+        st.warning("Current data is unavailable. The app will not display an old value as live.")
+    increase = item.get("up", "The effect depends on the surrounding market context.")
+    decrease = item.get("down", "The effect depends on the surrounding market context.")
+    relevance = {
+        "Asia":"Most directly relevant to ANTA Sports; it can also affect Tomra and Siemens Healthineers through Chinese demand.",
+        "Economic Drivers":"May affect Verbund through power markets and all European holdings through inflation, costs and currencies.",
+        "Safe Havens":"Changes in risk appetite and interest rates can affect valuation across all five holdings.",
+        "Equities":"Shows the market backdrop around the holdings; it does not prove why an individual holding moved.",
+    }.get(item.get("category"), "The effect depends on each holding's exposure.")
+    st.markdown(f"### Current status\n{_indicator_interpretation(item)}\n\n### What it is\n{item.get('role')}. It is used here as a market indicator, not a certain forecast.\n\n### What an increase usually means\n{increase}\n\n### What a decrease usually means\n{decrease}\n\n### Why it matters for markets\nThe move can change expectations for growth, inflation, interest rates or investor risk appetite. Its meaning depends on what caused it and on other indicators.\n\n### Possible relevance to my holdings\n{relevance}")
+    news = st.session_state.get("market_news_48h") or fetch_market_news_48h()
+    terms = [w.lower() for w in re.findall(r"[A-Za-z]+", name) if len(w) > 3]
+    related = [a for a in news if any(t in article_blob(a) for t in terms)][:8]
+    st.markdown("## Relevant news and sources")
+    _render_source_list(related)
+
+
+def _render_overview() -> None:
+    with st.spinner("Loading market prices and selecting news from the previous 48 hours…"):
+        snapshot, market_news = load_market_snapshot(), fetch_market_news_48h()
+        drivers = build_driver_snapshot(market_news)
+    st.session_state.update(market_snapshot=snapshot, market_news_48h=market_news, market_driver_snapshot=drivers)
+    start, end = _market_period()
+    st.markdown(f"<div class='mb-topbar'><div><div class='mb-kicker'>JUGG 3.1 · MARKET INTELLIGENCE</div><h1>Market Briefing</h1><div class='mb-sub'>Previous 48 hours: {start} — {end}</div></div><div class='mb-status'>● {len(market_news)} selected news items</div></div>", unsafe_allow_html=True)
+    st.caption("Market data: Yahoo Finance chart endpoint · refreshed up to every 15 minutes. News: publisher RSS links selected from the strict 48-hour window. Unavailable quotes are not replaced with stale values.")
+    _render_regime_and_flow(snapshot)
+    st.markdown("<div class='section-spacer'></div><div class='mb-section-title'>Market Indicators</div><div class='mb-section-note'>Price moves are interpreted by economic meaning, not coloured mechanically.</div>", unsafe_allow_html=True)
+    _render_market_cards(snapshot)
+    st.markdown("<div class='section-spacer'></div>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.markdown(f"<div class='mb-section-title'>Generate Overall Market Briefing</div><div class='mb-section-note'>Exact period: {start} — {end}</div>", unsafe_allow_html=True)
+        with st.form("jugg31_overall_market_form", border=False):
+            a, b = st.columns([1.35, 1])
+            with a: length_label = st.selectbox("Briefing length", list(BRIEFING_LENGTHS), index=1, key="jugg31_market_length")
+            with b: submitted = st.form_submit_button("✦ Generate Briefing", use_container_width=True, key="jugg31_market_submit")
+        last = st.session_state.get("generated_market_briefing", {}).get("created_at", "Not generated in this session")
+        st.caption(f"Last generated: {last}")
+        if submitted:
+            with st.spinner("Ranking evidence and generating the briefing…"):
+                st.session_state["generated_market_briefing"] = generate_market_briefing(snapshot, market_news, length_label)
+            _navigate_briefing("market_summary")
+    st.markdown("<div class='section-spacer'></div>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.markdown("<div class='mb-section-title'>Top Drivers <span class='estimate-pill'>FACTS + INTERPRETATION</span></div>", unsafe_allow_html=True)
+        _render_driver_cards(drivers[:5])
+    st.markdown("<div class='section-spacer'></div>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.markdown("<div class='mb-section-title'>My Holdings</div><div class='mb-section-note'>Click a card for its price view, evidence and 48-hour briefing.</div>", unsafe_allow_html=True)
+        _render_holding_cards()
+
+
 def render_market_briefing() -> None:
     _render_briefing_css()
     st.markdown('<a class="back-link" href="?page=hub" target="_self">← Back to programs</a><style>.back-link{display:inline-flex;padding:9px 13px;border:1px solid rgba(255,255,255,.13);border-radius:11px;color:#eef1ff!important;text-decoration:none!important;background:rgba(255,255,255,.04);margin-bottom:8px}.back-link:hover{border-color:rgba(143,92,255,.5);background:rgba(143,92,255,.10)}</style>', unsafe_allow_html=True)
     view = _query_value("view", "overview")
     if view == "market_summary":
         _render_market_summary()
+    elif view == "indicator":
+        _render_indicator_detail(_query_value("indicator", "S&P 500"))
     elif view == "driver":
         _render_driver_detail(_query_value("driver", "rates"))
     elif view == "holding":
