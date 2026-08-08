@@ -1,9 +1,13 @@
-# JUGG 4.0
+# JUGG 5.0
 
-JUGG 4.0 updates the existing Streamlit application in place. It preserves News Finder and the JUGG 3.1 Market Briefing logic while introducing a compact animated four-program hub, consistent navigation, finance-style charts and a rebuilt Portfolio page.
+JUGG 5.0 updates the existing Streamlit application in place. It preserves the JUGG 4.0 hub, News Finder, Portfolio and Market Briefing while adding a fourth Organizer program, a subtle flowing purple/blue background animation behind the opening workspace, and a corrected latest-trading-day calculation in Holdings Overview.
 
 ## Main improvements
 
+- New **Organizer** program in slot 04: Groups → Boards → Lists → Cards, with add/rename/delete controls and drag-and-drop cards between lists.
+- Organizer data auto-saves in the browser using local storage, with **Backup** and **Restore** JSON controls for portability. No Trello, Google or other account connection is required.
+- The JUGG 4.0 opening workspace layout is retained; a slow dark purple/blue flowing animation now runs behind the main rectangle.
+- Portfolio **Latest day** now compares the latest two valid daily trading points instead of Yahoo's range-level `chartPreviousClose`, preventing multi-day or multi-month moves from appearing as a one-day percentage.
 - Four-card opening screen designed to fit on a normal laptop viewport without scrolling.
 - One consistent top navigation component on News Finder, Portfolio and Market Briefing.
 - One current portfolio-value panel instead of four summary tiles.
@@ -43,7 +47,7 @@ The same values can be added in Streamlit Community Cloud under **App settings �
 
 ## Add holdings without editing GitHub
 
-JUGG 4.0 can load holdings from a public CSV export URL. A practical setup is a Google Sheet published as CSV. Add the URL to Streamlit Secrets:
+JUGG 5.0 can load holdings from a public CSV export URL. A practical setup is a Google Sheet published as CSV. Add the URL to Streamlit Secrets:
 
 ```toml
 PORTFOLIO_DATA_URL = "https://docs.google.com/spreadsheets/d/.../export?format=csv"
@@ -63,6 +67,7 @@ After this one-time setup, adding or deleting a row in the sheet updates Portfol
 
 ## Data and reliability limitations
 
+- Organizer data is stored in the browser's local storage. It survives normal app reruns and revisits on the same browser, but it is not automatically synced across devices/browsers. Use **Backup** / **Restore** when moving the organizer or before clearing browser data.
 - Market charts use the public Yahoo Finance chart endpoint. Quotes may be delayed, exchange calendars differ, and the endpoint provides market prices—not institutional-grade real-time data.
 - The displayed portfolio value is a market-based estimate. It normalizes the supplied investments to €5,022.45 on 1 May 2026 and includes relevant EUR/NOK and EUR/HKD currency movement. Exact broker valuation requires actual position quantities, transaction prices, cash flows and a live quote for the structured product.
 - The 48-hour change uses available trading points within the period. If markets were closed, the app labels the basis as the latest available trading points.

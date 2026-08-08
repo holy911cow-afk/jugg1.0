@@ -19,7 +19,7 @@ from streamlit.components.v1 import html as components_html
 
 
 st.set_page_config(
-    page_title="JUGG 4.0",
+    page_title="JUGG 5.0",
     page_icon="📰",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -723,7 +723,7 @@ def render_portfolio():
 
 
 # ============================================================
-# JUGG 4.0 shared navigation and portfolio model
+# JUGG 5.0 shared navigation and portfolio model
 # ============================================================
 def render_app_nav(section: str) -> None:
     st.markdown(f"""
@@ -776,6 +776,23 @@ def _position_factor(holding: dict, histories: dict, timestamp: int) -> float:
     return factor
 
 
+def _latest_trading_session_change(history: dict) -> float | None:
+    """Return the move between the latest two valid daily trading points.
+
+    Portfolio history is requested with interval=1d, so this deliberately avoids
+    Yahoo's chartPreviousClose field, which can refer to the beginning of the
+    requested range and incorrectly turn a one-day column into a multi-month move.
+    """
+    points = history.get("points", []) if history else []
+    if len(points) < 2:
+        return None
+    latest_close = _as_float(points[-1][1])
+    previous_close = _as_float(points[-2][1])
+    if not previous_close:
+        return None
+    return ((latest_close / previous_close) - 1.0) * 100.0
+
+
 def build_portfolio_snapshot() -> tuple[list[dict], list[tuple[int, float]], str]:
     holdings = get_portfolio_holdings()
     tickers = {item.get("ticker") or item.get("proxy_ticker") for item in holdings}
@@ -807,7 +824,7 @@ def build_portfolio_snapshot() -> tuple[list[dict], list[tuple[int, float]], str
         history = histories.get(ticker, {})
         current_value = _as_float(item.get("original_investment_eur")) * scale * _position_factor(item, histories, latest_ts)
         row["current_value_eur"] = current_value
-        row["daily_pct"] = _as_float(history.get("daily_change"))
+        row["daily_pct"] = _latest_trading_session_change(history)
         row["market_price"] = history.get("price")
         row["currency"] = history.get("currency", "")
         if item.get("ticker") and history.get("ok"):
@@ -912,9 +929,11 @@ def render_portfolio() -> None:
         st.markdown('<div class="p40-table-head"><span>Asset</span><span>Estimated value</span><span>Weight</span><span>Latest day</span></div>', unsafe_allow_html=True)
         holding_html = []
         for row in rows:
-            daily_class = "pos" if row["daily_pct"] >= 0 else "neg"
+            daily_pct = row.get("daily_pct")
+            daily_class = "pos" if daily_pct is not None and daily_pct >= 0 else ("neg" if daily_pct is not None else "")
+            daily_text = f"{daily_pct:+.2f}%" if daily_pct is not None else "—"
             quote = f'{row.get("market_price"):,.2f} {row.get("currency", "")}' if row.get("market_price") is not None else "Quote unavailable"
-            holding_html.append(f'<div class="p40-holding"><div><b>{html_lib.escape(row["name"])}</b> · {html_lib.escape(row["abbr"])}<small>{html_lib.escape(row["source_status"])} · {html_lib.escape(quote)}</small></div><div>€{row["current_value_eur"]:,.2f}</div><div>{row["current_value_eur"]/total*100:.1f}%</div><div class="{daily_class}">{row["daily_pct"]:+.2f}%</div></div>')
+            holding_html.append(f'<div class="p40-holding"><div><b>{html_lib.escape(row["name"])}</b> · {html_lib.escape(row["abbr"])}<small>{html_lib.escape(row["source_status"])} · {html_lib.escape(quote)}</small></div><div>€{row["current_value_eur"]:,.2f}</div><div>{row["current_value_eur"]/total*100:.1f}%</div><div class="{daily_class}">{daily_text}</div></div>')
         st.markdown("".join(holding_html), unsafe_allow_html=True)
 
 
@@ -1072,7 +1091,7 @@ def _as_float(value, default: float = 0.0) -> float:
 @st.cache_data(ttl=5 * 60, show_spinner=False)
 def _fetch_external_holdings_csv(url: str) -> list[dict]:
     """Load a public CSV so holdings can be changed without redeploying the app."""
-    response = requests.get(url, headers={"User-Agent": "Mozilla/5.0 JUGG/4.0"}, timeout=15)
+    response = requests.get(url, headers={"User-Agent": "Mozilla/5.0 JUGG/5.0"}, timeout=15)
     response.raise_for_status()
     rows = []
     for raw in csv.DictReader(io.StringIO(response.text)):
@@ -2043,7 +2062,7 @@ def _render_overview() -> None:
         drivers = build_driver_snapshot(market_news)
     st.session_state.update(market_snapshot=snapshot, market_news_48h=market_news, market_driver_snapshot=drivers)
     start, end = _market_period()
-    st.markdown(f"<div class='mb-topbar'><div><div class='mb-kicker'>JUGG 4.0 · MARKET INTELLIGENCE</div><h1>Market Briefing</h1><div class='mb-sub'>Previous 48 hours: {start} — {end}</div></div><div class='mb-status'>● {len(market_news)} selected news items</div></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='mb-topbar'><div><div class='mb-kicker'>JUGG 5.0 · MARKET INTELLIGENCE</div><h1>Market Briefing</h1><div class='mb-sub'>Previous 48 hours: {start} — {end}</div></div><div class='mb-status'>● {len(market_news)} selected news items</div></div>", unsafe_allow_html=True)
     st.caption("Market data: Yahoo Finance chart endpoint · refreshed up to every 15 minutes. News: publisher RSS links selected from the strict 48-hour window. Unavailable quotes are not replaced with stale values.")
     _render_regime_and_flow(snapshot)
     st.markdown("<div class='section-spacer'></div><div class='mb-section-title'>Market Indicators</div><div class='mb-section-note'>Price moves are interpreted by economic meaning, not coloured mechanically.</div>", unsafe_allow_html=True)
@@ -2089,27 +2108,126 @@ def render_market_briefing() -> None:
         _render_overview()
 
 
+def render_organizer() -> None:
+    render_app_nav("Organizer")
+    st.markdown("""
+    <style>
+    .main .block-container{max-width:1500px;padding:1.05rem 1.25rem 3rem!important}
+    .jugg-app-nav{margin-bottom:12px!important}
+    [data-testid="stIFrame"]{border:1px solid rgba(132,153,255,.16)!important;border-radius:19px!important;background:rgba(5,9,24,.72)!important;box-shadow:0 24px 75px rgba(0,0,0,.28)!important;overflow:hidden!important}
+    </style>
+    """, unsafe_allow_html=True)
+
+    organizer_html = r"""
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--bg:#070b19;--panel:#0d1429;--panel2:#111a34;--line:rgba(132,153,255,.18);--text:#f5f7ff;--muted:#8e9abb;--violet:#9163ff;--blue:#5b8dff;--green:#55dda0;--red:#ff7186}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:transparent;color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}button,input{font:inherit}
+.app{min-height:748px;padding:22px;background:radial-gradient(circle at 18% -5%,rgba(112,65,235,.16),transparent 34%),linear-gradient(155deg,rgba(7,12,29,.99),rgba(5,9,21,.99));overflow:hidden}
+.topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px}.kicker{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8f7adb;margin-bottom:5px}.title{font-size:28px;font-weight:720;letter-spacing:-.035em}.subtitle{margin-top:5px;color:var(--muted);font-size:12px}.actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.btn{border:1px solid rgba(145,99,255,.38);border-radius:11px;background:linear-gradient(145deg,rgba(111,71,232,.92),rgba(49,82,207,.92));color:white;padding:9px 12px;cursor:pointer;font-size:11px;font-weight:650;box-shadow:0 8px 22px rgba(66,56,190,.17);transition:.18s}.btn:hover{transform:translateY(-1px);border-color:rgba(176,151,255,.7)}.btn.secondary{background:rgba(255,255,255,.035);border-color:var(--line);box-shadow:none;color:#dfe4f6}.btn.danger{background:rgba(255,113,134,.08);border-color:rgba(255,113,134,.24);color:#ff9cac}.btn.icon{padding:6px 8px;min-width:30px}
+.crumbs{display:flex;align-items:center;gap:7px;margin:0 0 14px;color:#7f8bad;font-size:11px}.crumb{color:#b5bde0;cursor:pointer}.crumb:hover{color:white}.sep{color:#46516f}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}.folder,.board-card{position:relative;min-height:132px;padding:17px;border:1px solid var(--line);border-radius:15px;background:linear-gradient(145deg,rgba(18,27,55,.94),rgba(9,15,33,.98));cursor:pointer;transition:.2s;overflow:hidden}.folder:hover,.board-card:hover{transform:translateY(-3px);border-color:rgba(145,99,255,.5);box-shadow:0 16px 36px rgba(35,25,110,.22)}.folder:before,.board-card:before{content:"";position:absolute;inset:auto -20% -55% 38%;height:130px;background:radial-gradient(circle,rgba(111,90,239,.12),transparent 66%);pointer-events:none}.folder-icon{width:40px;height:34px;border:1px solid rgba(153,121,255,.32);border-radius:8px;background:linear-gradient(145deg,rgba(119,76,237,.24),rgba(38,82,179,.16));display:grid;place-items:center;color:#b79fff;font-size:18px;margin-bottom:14px}.card-name{font-size:15px;font-weight:680;line-height:1.25}.meta{margin-top:6px;color:#7f8bad;font-size:10px}.card-tools{position:absolute;right:9px;top:9px;display:flex;gap:4px;opacity:.72}.mini{border:1px solid rgba(132,153,255,.14);background:rgba(4,8,20,.5);color:#aab3cf;border-radius:8px;padding:4px 6px;cursor:pointer;font-size:10px}.mini:hover{color:white;border-color:rgba(145,99,255,.42)}
+.empty{border:1px dashed rgba(132,153,255,.22);border-radius:16px;padding:48px 20px;text-align:center;color:#7682a2;background:rgba(255,255,255,.018)}.empty b{display:block;color:#cfd5e9;font-size:14px;margin-bottom:6px}
+.board-shell{position:relative}.board-scroll{display:flex;align-items:flex-start;gap:12px;overflow-x:auto;overflow-y:hidden;padding:2px 2px 18px;min-height:555px;scrollbar-color:#313b63 transparent;scrollbar-width:thin}.list{flex:0 0 286px;border:1px solid rgba(132,153,255,.18);border-radius:14px;background:linear-gradient(160deg,rgba(15,23,47,.97),rgba(8,14,30,.99));box-shadow:0 13px 36px rgba(0,0,0,.18);max-height:540px;display:flex;flex-direction:column}.list-head{display:flex;align-items:center;justify-content:space-between;gap:7px;padding:12px 12px 8px}.list-title{font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.list-actions{display:flex;gap:3px}.cards{padding:3px 8px 7px;overflow-y:auto;min-height:45px;scrollbar-width:thin;scrollbar-color:#303a61 transparent}.task{position:relative;margin:7px 0;padding:11px 30px 11px 11px;border:1px solid rgba(132,153,255,.13);border-radius:10px;background:#151d34;color:#e9ecf8;font-size:11px;line-height:1.42;cursor:grab;box-shadow:0 5px 14px rgba(0,0,0,.13)}.task:active{cursor:grabbing}.task:hover{border-color:rgba(145,99,255,.34)}.task .x{position:absolute;right:7px;top:7px;border:0;background:transparent;color:#606b89;cursor:pointer;font-size:13px}.task .x:hover{color:#ff8ea0}.add-card{margin:0 8px 9px;border:1px dashed rgba(132,153,255,.2);border-radius:9px;background:rgba(255,255,255,.018);color:#8995b5;padding:9px;text-align:left;cursor:pointer;font-size:10px}.add-card:hover{color:#dce1f4;border-color:rgba(145,99,255,.38);background:rgba(111,71,232,.06)}.new-list{flex:0 0 250px;border:1px dashed rgba(132,153,255,.23);border-radius:14px;background:rgba(255,255,255,.02);padding:14px;color:#8894b5;cursor:pointer;font-size:11px;text-align:left}.new-list:hover{color:#dce1f4;border-color:rgba(145,99,255,.42);background:rgba(111,71,232,.06)}
+.notice{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:14px;padding:10px 12px;border:1px solid rgba(132,153,255,.12);border-radius:11px;background:rgba(255,255,255,.018);color:#74809f;font-size:9px;line-height:1.45}.notice strong{color:#aab3ce;font-weight:600}.drop-active{outline:1px solid rgba(145,99,255,.55);outline-offset:-3px;background:rgba(111,71,232,.06)}
+.modal-wrap{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(2,5,14,.72);backdrop-filter:blur(7px);z-index:50}.modal{width:min(420px,100%);border:1px solid rgba(132,153,255,.24);border-radius:16px;background:linear-gradient(150deg,#111a34,#090f22);box-shadow:0 30px 90px rgba(0,0,0,.5);padding:18px}.modal h3{margin:0 0 5px;font-size:17px}.modal p{margin:0 0 13px;color:#7f8bad;font-size:10px}.modal input{width:100%;border:1px solid rgba(132,153,255,.23);border-radius:10px;background:#0b1228;color:white;padding:11px 12px;outline:none}.modal input:focus{border-color:rgba(145,99,255,.7);box-shadow:0 0 0 3px rgba(145,99,255,.08)}.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:13px}
+.toast{position:fixed;right:18px;bottom:18px;z-index:80;opacity:0;transform:translateY(8px);pointer-events:none;border:1px solid rgba(82,224,145,.22);border-radius:10px;background:#0d1b25;color:#a9f0ca;padding:9px 11px;font-size:10px;transition:.2s}.toast.show{opacity:1;transform:none}
+@media(max-width:650px){.app{padding:14px;min-height:740px}.topbar{display:block}.actions{justify-content:flex-start;margin-top:11px}.title{font-size:23px}.grid{grid-template-columns:1fr}.board-scroll{min-height:575px}.list{flex-basis:270px}}
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+<div class="modal-wrap" id="modalWrap"><div class="modal"><h3 id="modalTitle"></h3><p id="modalHint"></p><input id="modalInput" autocomplete="off"><div class="modal-actions"><button class="btn secondary" onclick="closeModal()">Cancel</button><button class="btn" id="modalSave">Save</button></div></div></div>
+<div class="toast" id="toast">Saved</div>
+<input type="file" id="restoreInput" accept="application/json" style="display:none">
+<script>
+const STORAGE_KEY='jugg_organizer_v1';
+let currentGroupId=null,currentBoardId=null,modalCallback=null,storageOK=true;
+function uid(){return (window.crypto&&window.crypto.randomUUID)?window.crypto.randomUUID():'id-'+Date.now()+'-'+Math.random().toString(16).slice(2)}
+function fresh(){return {version:1,groups:[]}}
+function readRaw(){try{return window.localStorage.getItem(STORAGE_KEY)}catch(e){}try{return window.parent.localStorage.getItem(STORAGE_KEY)}catch(e){}return null}
+function writeRaw(raw){try{window.localStorage.setItem(STORAGE_KEY,raw);return true}catch(e){}try{window.parent.localStorage.setItem(STORAGE_KEY,raw);return true}catch(e){}return false}
+function load(){try{const raw=readRaw();if(!raw)return fresh();const data=JSON.parse(raw);return data&&Array.isArray(data.groups)?data:fresh()}catch(e){return fresh()}}
+let data=load();
+function save(){storageOK=writeRaw(JSON.stringify(data));showToast(storageOK?'Saved':'Browser storage unavailable')}
+function showToast(message='Saved'){const t=document.getElementById('toast');t.textContent=message;t.classList.add('show');clearTimeout(showToast.timer);showToast.timer=setTimeout(()=>t.classList.remove('show'),1200)}
+function esc(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+function group(){return data.groups.find(g=>g.id===currentGroupId)}
+function board(){const g=group();return g?g.boards.find(b=>b.id===currentBoardId):null}
+function statsBoard(b){const lists=b.lists||[];return {lists:lists.length,cards:lists.reduce((n,l)=>n+(l.cards||[]).length,0)}}
+function openModal(title,hint,initial,cb){modalCallback=cb;document.getElementById('modalTitle').textContent=title;document.getElementById('modalHint').textContent=hint||'';const input=document.getElementById('modalInput');input.value=initial||'';document.getElementById('modalWrap').style.display='flex';setTimeout(()=>{input.focus();input.select()},30)}
+function closeModal(){document.getElementById('modalWrap').style.display='none';modalCallback=null}
+document.getElementById('modalSave').onclick=()=>{const v=document.getElementById('modalInput').value.trim();if(!v)return;const cb=modalCallback;closeModal();if(cb)cb(v)};
+document.getElementById('modalInput').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('modalSave').click();if(e.key==='Escape')closeModal()});
+function backup(){const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='JUGG_Organizer_Backup_'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),500)}
+function restore(){document.getElementById('restoreInput').click()}
+document.getElementById('restoreInput').addEventListener('change',e=>{const file=e.target.files[0];if(!file)return;const r=new FileReader();r.onload=()=>{try{const candidate=JSON.parse(r.result);if(!candidate||!Array.isArray(candidate.groups))throw new Error('Invalid backup');if(confirm('Replace the current JUGG Organizer data with this backup?')){data=candidate;currentGroupId=null;currentBoardId=null;save();renderGroups()}}catch(err){alert('This file is not a valid JUGG Organizer backup.')}};r.readAsText(file);e.target.value=''})
+function shellHeader(title,sub,primaryLabel,primaryAction,crumbs=''){
+  return `<div class="topbar"><div><div class="kicker">JUGG 5.0 · PROGRAM 04</div><div class="title">${esc(title)}</div><div class="subtitle">${esc(sub)}</div></div><div class="actions"><button class="btn secondary" onclick="backup()">Backup</button><button class="btn secondary" onclick="restore()">Restore</button>${primaryLabel?`<button class="btn" onclick="${primaryAction}">＋ ${esc(primaryLabel)}</button>`:''}</div></div>${crumbs}`
+}
+function renderGroups(){currentGroupId=null;currentBoardId=null;const app=document.getElementById('app');const cards=data.groups.map(g=>`<div class="folder" onclick="openGroup('${g.id}')"><div class="card-tools"><button class="mini" onclick="event.stopPropagation();renameGroup('${g.id}')">Rename</button><button class="mini" onclick="event.stopPropagation();deleteGroup('${g.id}')">×</button></div><div class="folder-icon">▰</div><div class="card-name">${esc(g.name)}</div><div class="meta">${g.boards.length} board${g.boards.length===1?'':'s'}</div></div>`).join('');
+ app.innerHTML=shellHeader('Organizer','Groups are folders for your boards. Everything saves automatically in this browser.','Add group','addGroup()')+(cards?`<div class="grid">${cards}</div>`:`<div class="empty"><b>No groups yet</b>Create your first group to start organizing boards.</div>`)+notice();}
+function addGroup(){openModal('New group','Use groups like folders — for example JUGG, School or Personal.','',name=>{data.groups.push({id:uid(),name,boards:[]});save();renderGroups()})}
+function renameGroup(id){const g=data.groups.find(x=>x.id===id);if(!g)return;openModal('Rename group','',g.name,name=>{g.name=name;save();renderGroups()})}
+function deleteGroup(id){const g=data.groups.find(x=>x.id===id);if(!g)return;if(confirm(`Delete “${g.name}” and every board inside it?`)){data.groups=data.groups.filter(x=>x.id!==id);save();renderGroups()}}
+function openGroup(id){currentGroupId=id;currentBoardId=null;renderBoards()}
+function renderBoards(){const g=group();if(!g){renderGroups();return}const cards=g.boards.map(b=>{const st=statsBoard(b);return `<div class="board-card" onclick="openBoard('${b.id}')"><div class="card-tools"><button class="mini" onclick="event.stopPropagation();renameBoard('${b.id}')">Rename</button><button class="mini" onclick="event.stopPropagation();deleteBoard('${b.id}')">×</button></div><div class="folder-icon">▦</div><div class="card-name">${esc(b.name)}</div><div class="meta">${st.lists} list${st.lists===1?'':'s'} · ${st.cards} card${st.cards===1?'':'s'}</div></div>`}).join('');const crumbs=`<div class="crumbs"><span class="crumb" onclick="renderGroups()">Groups</span><span class="sep">›</span><span>${esc(g.name)}</span></div>`;document.getElementById('app').innerHTML=shellHeader(g.name,'Boards inside this group.','Add board','addBoard()',crumbs)+(cards?`<div class="grid">${cards}</div>`:`<div class="empty"><b>No boards in this group</b>Add a board, then build the lists you need inside it.</div>`)+notice()}
+function addBoard(){const g=group();if(!g)return;openModal('New board','Give this board a clear project or workflow name.','',name=>{g.boards.push({id:uid(),name,lists:[]});save();renderBoards()})}
+function renameBoard(id){const b=group()?.boards.find(x=>x.id===id);if(!b)return;openModal('Rename board','',b.name,name=>{b.name=name;save();renderBoards()})}
+function deleteBoard(id){const g=group(),b=g?.boards.find(x=>x.id===id);if(!b)return;if(confirm(`Delete board “${b.name}”?`)){g.boards=g.boards.filter(x=>x.id!==id);save();renderBoards()}}
+function openBoard(id){currentBoardId=id;renderBoard()}
+function renderBoard(){const g=group(),b=board();if(!g||!b){renderGroups();return}const crumbs=`<div class="crumbs"><span class="crumb" onclick="renderGroups()">Groups</span><span class="sep">›</span><span class="crumb" onclick="renderBoards()">${esc(g.name)}</span><span class="sep">›</span><span>${esc(b.name)}</span></div>`;const lists=(b.lists||[]).map(l=>listHtml(l)).join('');document.getElementById('app').innerHTML=shellHeader(b.name,'Drag cards between lists. Add only the workflow you actually need.','Add list','addList()',crumbs)+`<div class="board-shell"><div class="board-scroll">${lists}<button class="new-list" onclick="addList()">＋ Add another list</button></div></div>`+notice()}
+function listHtml(l){const cards=(l.cards||[]).map(c=>`<div class="task" draggable="true" ondragstart="dragCard(event,'${l.id}','${c.id}')" ondblclick="renameCard('${l.id}','${c.id}')">${esc(c.text)}<button class="x" onclick="event.stopPropagation();deleteCard('${l.id}','${c.id}')">×</button></div>`).join('');return `<section class="list"><div class="list-head"><div class="list-title">${esc(l.name)}</div><div class="list-actions"><button class="mini" onclick="renameList('${l.id}')">✎</button><button class="mini" onclick="deleteList('${l.id}')">×</button></div></div><div class="cards" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropCard(event,'${l.id}')">${cards}</div><button class="add-card" onclick="addCard('${l.id}')">＋ Add a card</button></section>`}
+function addList(){const b=board();if(!b)return;openModal('New list','Examples: To do, In progress, Waiting, Done.','',name=>{b.lists.push({id:uid(),name,cards:[]});save();renderBoard()})}
+function renameList(id){const l=board()?.lists.find(x=>x.id===id);if(!l)return;openModal('Rename list','',l.name,name=>{l.name=name;save();renderBoard()})}
+function deleteList(id){const b=board(),l=b?.lists.find(x=>x.id===id);if(!l)return;if(confirm(`Delete list “${l.name}” and its ${l.cards.length} card(s)?`)){b.lists=b.lists.filter(x=>x.id!==id);save();renderBoard()}}
+function addCard(listId){const l=board()?.lists.find(x=>x.id===listId);if(!l)return;openModal('New card','Keep the card short and actionable.','',text=>{l.cards.push({id:uid(),text});save();renderBoard()})}
+function renameCard(listId,cardId){const l=board()?.lists.find(x=>x.id===listId),c=l?.cards.find(x=>x.id===cardId);if(!c)return;openModal('Edit card','',c.text,text=>{c.text=text;save();renderBoard()})}
+function deleteCard(listId,cardId){const l=board()?.lists.find(x=>x.id===listId);if(!l)return;l.cards=l.cards.filter(x=>x.id!==cardId);save();renderBoard()}
+function dragCard(e,listId,cardId){e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',JSON.stringify({listId,cardId}))}
+function dragOver(e){e.preventDefault();e.currentTarget.classList.add('drop-active');e.dataTransfer.dropEffect='move'}
+function dragLeave(e){e.currentTarget.classList.remove('drop-active')}
+function dropCard(e,targetListId){e.preventDefault();e.currentTarget.classList.remove('drop-active');let payload;try{payload=JSON.parse(e.dataTransfer.getData('text/plain'))}catch(_){return}const b=board(),source=b?.lists.find(x=>x.id===payload.listId),target=b?.lists.find(x=>x.id===targetListId);if(!source||!target)return;const idx=source.cards.findIndex(x=>x.id===payload.cardId);if(idx<0)return;const [card]=source.cards.splice(idx,1);target.cards.push(card);save();renderBoard()}
+function notice(){const state=storageOK?'groups, boards, lists and cards are stored in this browser':'browser storage is unavailable in this session';return `<div class="notice"><span><strong>Auto-save:</strong> ${state} — no Trello or Google account required.</span><span>Use <strong>Backup</strong> if you want a portable copy.</span></div>`}
+renderGroups();
+</script>
+</body>
+</html>
+    """
+    components_html(organizer_html, height=800, scrolling=True)
+
+
 def render_hub() -> None:
     st.markdown("""
     <div class="j40-shell">
       <div class="j40-gridlines"></div><div class="j40-orbit orbit-a"></div><div class="j40-orbit orbit-b"></div>
-      <header class="j40-header"><div class="j40-brand"><span>J</span><b>JUGG</b><small>4.0</small></div><div class="j40-pulse"><i></i> Market workspace</div></header>
+      <header class="j40-header"><div class="j40-brand"><span>J</span><b>JUGG</b><small>5.0</small></div><div class="j40-pulse"><i></i> Market workspace</div></header>
       <section class="j40-hero"><div class="j40-eyebrow">YOUR FINANCIAL COMMAND CENTRE</div><h1>See the signal.<br><em>Understand the move.</em></h1><p>Four focused tools. One coherent view of your markets and portfolio.</p></section>
       <nav class="j40-apps" aria-label="JUGG programs">
         <a class="j40-card" href="?page=news" target="_self"><span class="j40-index">01</span><div class="j40-icon"><svg viewBox="0 0 56 56"><path d="M13 10h29v36H13zM20 19h15M20 26h15M20 33h10"></path></svg></div><h2>News Finder</h2><p>Find and rank company and sector news.</p><b>Open program <i>↗</i></b></a>
         <a class="j40-card" href="?page=portfolio" target="_self"><span class="j40-index">02</span><div class="j40-icon"><svg viewBox="0 0 56 56"><path d="M10 44h38M15 39V27M25 39V17M35 39V23M45 39V11"></path></svg></div><h2>Portfolio</h2><p>Track value, allocation and market performance.</p><b>Open program <i>↗</i></b></a>
         <a class="j40-card" href="?page=briefing&view=overview" target="_self"><span class="j40-index">03</span><div class="j40-icon"><svg viewBox="0 0 56 56"><path d="M9 39l11-12 9 7 11-17 8 6M9 46h39"></path><circle cx="20" cy="27" r="2"></circle><circle cx="40" cy="17" r="2"></circle></svg></div><h2>Market Briefing</h2><p>Explain risk, flows, drivers and your holdings.</p><b>Open program <i>↗</i></b></a>
-        <div class="j40-card j40-soon"><span class="j40-index">04</span><div class="j40-icon"><svg viewBox="0 0 56 56"><circle cx="28" cy="28" r="15"></circle><path d="M28 20v16M20 28h16"></path></svg></div><h2>Reserved</h2><p>The fourth workspace is ready for your next program.</p><b>Coming later</b></div>
+        <a class="j40-card" href="?page=organizer" target="_self"><span class="j40-index">04</span><div class="j40-icon"><svg viewBox="0 0 56 56"><path d="M10 15h15l4 5h17v25H10z"></path><path d="M16 28h10M16 34h18M16 40h14"></path></svg></div><h2>Organizer</h2><p>Organize projects in groups, boards, lists and cards.</p><b>Open program <i>↗</i></b></a>
       </nav>
       <footer class="j40-footer"><span>LIVE DATA LAYER</span><i></i><span>48H INTELLIGENCE</span><i></i><span>DARK & SLEEK SYSTEM</span></footer>
     </div>
     <style>
-    .main .block-container{max-width:1500px;padding:.75rem 1.15rem 1rem!important}.j40-shell{position:relative;min-height:calc(100vh - 4.2rem);overflow:hidden;padding:24px 32px 18px;border:1px solid rgba(132,153,255,.18);border-radius:25px;background:radial-gradient(circle at 50% -15%,rgba(112,65,235,.18),transparent 38%),linear-gradient(150deg,#091026 0%,#050918 62%,#071022 100%);box-shadow:0 35px 110px rgba(0,0,0,.48);display:flex;flex-direction:column}
+    .main .block-container{max-width:1500px;padding:.75rem 1.15rem 1rem!important}
+    .stApp:before,.stApp:after{content:"";position:fixed;pointer-events:none;z-index:0;border-radius:48% 52% 57% 43%;filter:blur(78px);opacity:.34;will-change:transform}
+    .stApp:before{width:48vw;height:46vw;left:-12vw;top:8vh;background:radial-gradient(circle at 45% 45%,rgba(103,61,226,.72) 0%,rgba(65,73,205,.34) 38%,transparent 72%);animation:j50-flow-a 18s ease-in-out infinite alternate}
+    .stApp:after{width:46vw;height:43vw;right:-13vw;bottom:-8vh;background:radial-gradient(circle at 50% 50%,rgba(35,102,218,.64) 0%,rgba(78,52,201,.30) 43%,transparent 72%);animation:j50-flow-b 21s ease-in-out infinite alternate}
+    [data-testid="stAppViewContainer"]>.main{position:relative;z-index:1}
+    .j40-shell{position:relative;min-height:calc(100vh - 4.2rem);overflow:hidden;padding:24px 32px 18px;border:1px solid rgba(132,153,255,.18);border-radius:25px;background:radial-gradient(circle at 50% -15%,rgba(112,65,235,.18),transparent 38%),linear-gradient(150deg,#091026 0%,#050918 62%,#071022 100%);box-shadow:0 35px 110px rgba(0,0,0,.48);display:flex;flex-direction:column}
     .j40-gridlines{position:absolute;inset:0;background-image:linear-gradient(rgba(117,136,207,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(117,136,207,.045) 1px,transparent 1px);background-size:52px 52px;mask-image:linear-gradient(to bottom,black,transparent 86%);animation:j40-grid 16s linear infinite}.j40-header{position:relative;z-index:3;display:flex;align-items:center;justify-content:space-between}.j40-brand{display:flex;align-items:center;gap:10px;color:#f8f9ff}.j40-brand>span{width:32px;height:32px;display:grid;place-items:center;border-radius:10px;background:linear-gradient(145deg,#9661ff,#3151cf);font-weight:800;box-shadow:0 0 25px rgba(125,77,255,.42)}.j40-brand b{font-size:15px;letter-spacing:.04em}.j40-brand small{font-size:9px;color:#9b83e8;border:1px solid rgba(155,126,255,.3);border-radius:999px;padding:3px 6px}.j40-pulse{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#8290b5}.j40-pulse i{display:inline-block;width:6px;height:6px;border-radius:50%;background:#58db94;box-shadow:0 0 12px #58db94;margin-right:7px;animation:j40-pulse 2.2s ease-in-out infinite}
     .j40-hero{position:relative;z-index:2;text-align:center;margin:34px auto 28px;animation:j40-rise .85s cubic-bezier(.16,1,.3,1) both}.j40-eyebrow{font-size:9px;letter-spacing:.22em;color:#8e7bd2;margin-bottom:12px}.j40-hero h1{margin:0!important;color:#f8f9ff!important;font-size:clamp(34px,4vw,55px)!important;line-height:1.01!important;letter-spacing:-.045em!important;font-weight:700!important}.j40-hero h1 em{font-style:normal;background:linear-gradient(90deg,#b5a1ff,#6db9ff);-webkit-background-clip:text;background-clip:text;color:transparent}.j40-hero p{margin:12px 0 0;color:#8f9abb;font-size:13px}
     .j40-apps{position:relative;z-index:3;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;width:100%;max-width:1120px;margin:0 auto}.j40-card{position:relative;display:block;min-height:220px;padding:20px 19px 17px;border:1px solid rgba(132,153,255,.18);border-radius:17px;background:linear-gradient(150deg,rgba(20,30,61,.9),rgba(8,14,31,.96));text-decoration:none!important;overflow:hidden;transition:transform .32s cubic-bezier(.2,.8,.2,1),border-color .32s,box-shadow .32s;animation:j40-card .7s cubic-bezier(.16,1,.3,1) both}.j40-card:nth-child(2){animation-delay:.08s}.j40-card:nth-child(3){animation-delay:.16s}.j40-card:nth-child(4){animation-delay:.24s}.j40-card:before{content:"";position:absolute;inset:-100% -40%;background:linear-gradient(112deg,transparent 42%,rgba(255,255,255,.09) 50%,transparent 58%);transform:translateX(-60%) rotate(7deg);transition:.75s}.j40-card:hover{transform:translateY(-7px);border-color:rgba(143,92,255,.58);box-shadow:0 20px 48px rgba(49,35,137,.31)}.j40-card:hover:before{transform:translateX(60%) rotate(7deg)}.j40-index{position:absolute;right:16px;top:15px;color:#596783;font:600 10px/1 monospace;letter-spacing:.12em}.j40-icon{width:48px;height:48px;border:1px solid rgba(152,117,255,.35);border-radius:14px;display:grid;place-items:center;background:linear-gradient(145deg,rgba(112,69,236,.28),rgba(36,76,171,.22));box-shadow:0 0 28px rgba(113,71,240,.18)}.j40-icon svg{width:29px;fill:none;stroke:#ab91ff;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 6px rgba(122,84,255,.5))}.j40-card h2{margin:17px 0 7px!important;color:#f6f7ff!important;font-size:16px!important}.j40-card p{min-height:38px;margin:0;color:#94a0bf;font-size:11px;line-height:1.55}.j40-card>b{display:flex;align-items:center;justify-content:space-between;margin-top:17px;padding-top:12px;border-top:1px solid rgba(132,153,255,.1);color:#a990ff;font-size:10px;font-weight:600}.j40-card>b i{font-style:normal;font-size:15px}.j40-soon{opacity:.52}.j40-soon:hover{transform:none;border-color:rgba(132,153,255,.18);box-shadow:none}.j40-soon .j40-icon{filter:grayscale(.5)}
     .j40-footer{position:relative;z-index:2;margin:auto auto 0;padding-top:22px;display:flex;align-items:center;justify-content:center;gap:12px;color:#5f6d8b;font-size:8px;letter-spacing:.15em}.j40-footer i{width:3px;height:3px;border-radius:50%;background:#765bd7}.j40-orbit{position:absolute;border:1px solid rgba(124,91,240,.12);border-radius:50%;pointer-events:none}.orbit-a{width:410px;height:410px;left:-220px;bottom:-250px;animation:j40-orbit 18s linear infinite}.orbit-b{width:520px;height:520px;right:-300px;top:-320px;animation:j40-orbit 24s linear infinite reverse}
-    @keyframes j40-rise{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}@keyframes j40-card{from{opacity:0;transform:translateY(24px) scale(.975)}to{opacity:1;transform:none}}@keyframes j40-pulse{50%{opacity:.35;box-shadow:0 0 4px #58db94}}@keyframes j40-grid{to{background-position:52px 52px}}@keyframes j40-orbit{to{transform:rotate(360deg)}}
+    @keyframes j40-rise{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}@keyframes j40-card{from{opacity:0;transform:translateY(24px) scale(.975)}to{opacity:1;transform:none}}@keyframes j40-pulse{50%{opacity:.35;box-shadow:0 0 4px #58db94}}@keyframes j40-grid{to{background-position:52px 52px}}@keyframes j40-orbit{to{transform:rotate(360deg)}}@keyframes j50-flow-a{0%{transform:translate3d(0,0,0) scale(1) rotate(0deg)}45%{transform:translate3d(22vw,-5vh,0) scale(1.12,.92) rotate(18deg)}100%{transform:translate3d(35vw,15vh,0) scale(.92,1.14) rotate(42deg)}}@keyframes j50-flow-b{0%{transform:translate3d(0,0,0) scale(1.05,.95) rotate(0deg)}55%{transform:translate3d(-24vw,-12vh,0) scale(.9,1.13) rotate(-22deg)}100%{transform:translate3d(-36vw,4vh,0) scale(1.12,.9) rotate(-46deg)}}
     @media(max-width:980px){.j40-shell{min-height:auto;padding:22px 22px 30px}.j40-apps{grid-template-columns:repeat(2,1fr)}.j40-footer{margin-top:24px}}@media(max-width:580px){.main .block-container{padding:.5rem!important}.j40-shell{padding:18px 13px 28px;border-radius:18px}.j40-apps{grid-template-columns:1fr}.j40-hero{margin:34px auto 25px}.j40-card{min-height:190px}.j40-footer{display:none}}
     </style>
     """, unsafe_allow_html=True)
@@ -2124,5 +2242,7 @@ elif page == "portfolio":
     render_portfolio()
 elif page == "briefing":
     render_market_briefing()
+elif page == "organizer":
+    render_organizer()
 else:
     render_hub()
